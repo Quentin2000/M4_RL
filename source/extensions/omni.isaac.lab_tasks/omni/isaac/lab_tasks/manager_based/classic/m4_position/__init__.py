@@ -9,20 +9,18 @@ M4 locomotion environment.
 
 import gymnasium as gym
 
-from . import agents, m4_env_cfg, m4_velocity_env_cfg
+from . import agents, m4_env_cfg
 
 ##
 # Register Gym environments.
 ##
 
 gym.register(
-    id="Isaac-M4-Velocity-v0",
-    # id="Isaac-M4-v0",
+    id="Isaac-M4-v0",
     entry_point="omni.isaac.lab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": m4_velocity_env_cfg.M4VelocityEnvCfg,
-        # "env_cfg_entry_point": m4_env_cfg.M4EnvCfg,
+        "env_cfg_entry_point": m4_env_cfg.M4EnvCfg,
         "rsl_rl_cfg_entry_point": agents.rsl_rl_ppo_cfg.M4PPORunnerCfg,
         "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",

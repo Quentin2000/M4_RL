@@ -19,9 +19,10 @@ if TYPE_CHECKING:
 # Rewards for Anymal like robots
 
 def feet_air_time(
-    env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
+    env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float, action_cfg: str = "joint_vel", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     """Reward long steps taken by the feet using L2-kernel.
+    
 
     This function rewards the agent for taking steps that are longer than a threshold. This helps ensure
     that the robot lifts its feet off the ground and takes steps. The reward is computed as the sum of
@@ -37,6 +38,125 @@ def feet_air_time(
     reward = torch.sum((last_air_time - threshold) * first_contact, dim=1)
     # no reward for zero command
     reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
+    return reward
+
+
+def diff_wheels(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+
+    # print(env.action_manager.get_term(action_cfg))
+    # print(env.action_manager.action.shape) # [Num_envs,12], 12 because we the actions are configured to send positions to 4 legs and 4 hips and velocities to 4 wheels
+    # print("Action :", env.action_manager.action[0])
+    asset: Articulation = env.scene[asset_cfg.name]
+    # print(asset_cfg.joint_ids)
+    # print("Position :", asset.data.joint_pos[0, asset_cfg.joint_ids][8:])
+    # print("Speed ;", asset.data.joint_vel[0, asset_cfg.joint_ids][8:])
+    # print("Torque :", asset.data.applied_torque[0, asset_cfg.joint_ids][8:])
+
+    # print("Position :", asset.data.joint_pos[0, asset_cfg.joint_ids])
+    # print("Speed ;", asset.data.joint_vel[0, asset_cfg.joint_ids])
+    # print("Torque :", asset.data.applied_torque[0, asset_cfg.joint_ids])
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    RL_wheel_speed = asset.data.joint_vel[:, asset_cfg.joint_ids][0]
+    RR_wheel_speed = asset.data.joint_vel[:, asset_cfg.joint_ids][1]
+    FL_wheel_speed = asset.data.joint_vel[:, asset_cfg.joint_ids][2]
+    FR_wheel_speed = asset.data.joint_vel[:, asset_cfg.joint_ids][3]
+
+    # print("Norm :", torch.norm(RL_wheel_speed-FL_wheel_speed))
+
+    reward = - (torch.norm(RL_wheel_speed-FL_wheel_speed) + torch.norm(RR_wheel_speed-FR_wheel_speed))
+    return reward
+
+def diff_wheels_torque(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    RL_wheel_torque = asset.data.applied_torque[:, asset_cfg.joint_ids][0]
+    RR_wheel_torque = asset.data.applied_torque[:, asset_cfg.joint_ids][1]
+    FL_wheel_torque = asset.data.applied_torque[:, asset_cfg.joint_ids][2]
+    FR_wheel_torque = asset.data.applied_torque[:, asset_cfg.joint_ids][3]
+
+    reward = - (torch.norm(RL_wheel_torque-FL_wheel_torque) + torch.norm(RR_wheel_torque-FR_wheel_torque))
+    return reward
+
+def all_wheels_moving(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    
+    # Get the velocities of the wheels
+    wheel_speeds = asset.data.joint_vel[:, asset_cfg.joint_ids][:, :4]  # Assuming the first 4 joint IDs correspond to the wheels
+
+    # Calculate the differences in velocities between each pair of wheels
+    RL_wheel_speed = wheel_speeds[:, 0]  # Rear Left wheel
+    RR_wheel_speed = wheel_speeds[:, 1]  # Rear Right wheel
+    FL_wheel_speed = wheel_speeds[:, 2]  # Front Left wheel
+    FR_wheel_speed = wheel_speeds[:, 3]  # Front Right wheel
+
+    # Calculate the norms of the differences between each pair
+    diff_rear = torch.norm(abs(RL_wheel_speed) - abs(RR_wheel_speed))
+    diff_front = torch.norm(abs(FL_wheel_speed) - abs(FR_wheel_speed))
+
+    # Reward function that penalizes differences in wheel speeds
+    reward = - (diff_rear + diff_front)
+
+    return reward
+
+def all_wheels_moving_torque(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    
+    # Get the velocities of the wheels
+    wheel_torques = asset.data.applied_torque[:, asset_cfg.joint_ids][:, :4]  # Assuming the first 4 joint IDs correspond to the wheels
+
+    # Calculate the differences in velocities between each pair of wheels
+    RL_wheel_torque = wheel_torques[:, 0]  # Rear Left wheel
+    RR_wheel_torque = wheel_torques[:, 1]  # Rear Right wheel
+    FL_wheel_torque = wheel_torques[:, 2]  # Front Left wheel
+    FR_wheel_torque = wheel_torques[:, 3]  # Front Right wheel
+
+    # Calculate the norms of the differences between each pair
+    diff_rear = torch.norm(abs(RL_wheel_torque) - abs(RR_wheel_torque))
+    diff_front = torch.norm(abs(FL_wheel_torque) - abs(FR_wheel_torque))
+
+    # Reward function that penalizes differences in wheel speeds
+    reward = - (diff_rear + diff_front)
+
+    return reward
+
+def all_hips_movement(
+    env: ManagerBasedRLEnv, max_joint_pos: float, min_joint_pos: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+
+    # print(env.action_manager.get_term(action_cfg))
+    # print(env.action_manager.action.shape) # [Num_envs,12], 12 because we the actions are configured to send positions to 4 legs and 4 hips and velocities to 4 wheels
+    # print("Action :", env.action_manager.action[0])
+    # asset: Articulation = env.scene[asset_cfg.name]
+    # print(asset_cfg.joint_ids)
+    # print("Position :", asset.data.joint_pos[0, asset_cfg.joint_ids][8:])
+    # print("Speed ;", asset.data.joint_vel[0, asset_cfg.joint_ids][8:])
+    # print("Torque :", asset.data.applied_torque[0, asset_cfg.joint_ids][8:])
+
+    # print("Position :", asset.data.joint_pos[0, asset_cfg.joint_ids])
+    # print("Speed ;", asset.data.joint_vel[0, asset_cfg.joint_ids])
+    # print("Torque :", asset.data.applied_torque[0, asset_cfg.joint_ids])
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    RL_hip_pos = asset.data.joint_pos[:, asset_cfg.joint_ids][0]
+    RR_hip_pos = asset.data.joint_pos[:, asset_cfg.joint_ids][1]
+    FL_hip_pos = asset.data.joint_pos[:, asset_cfg.joint_ids][2]
+    FR_hip_pos = asset.data.joint_pos[:, asset_cfg.joint_ids][3]
+
+    differences = [torch.norm(RL_hip_pos-RR_hip_pos), torch.norm(RL_hip_pos-FL_hip_pos), torch.norm(RL_hip_pos-FR_hip_pos), torch.norm(RR_hip_pos-FL_hip_pos), torch.norm(RR_hip_pos-FR_hip_pos), torch.norm(FL_hip_pos-FR_hip_pos)]
+
+    reward = -torch.sum(differences, dim=1)
     return reward
 
 
