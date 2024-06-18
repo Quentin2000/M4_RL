@@ -31,28 +31,6 @@ def apply_actions(
 
     return 0.0
 
-def feet_air_time(
-    env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float, action_cfg: str = "joint_vel", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
-) -> torch.Tensor:
-    """Reward long steps taken by the feet using L2-kernel.
-    
-
-    This function rewards the agent for taking steps that are longer than a threshold. This helps ensure
-    that the robot lifts its feet off the ground and takes steps. The reward is computed as the sum of
-    the time for which the feet are in the air.
-
-    If the commands are small (i.e. the agent is not supposed to take a step), then the reward is zero.
-    """
-    # extract the used quantities (to enable type-hinting)
-    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    # compute the reward
-    first_contact = contact_sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
-    last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
-    reward = torch.sum((last_air_time - threshold) * first_contact, dim=1)
-    # no reward for zero command
-    reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
-    return reward
-
 
 def diff_wheels(
     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
@@ -66,13 +44,32 @@ def diff_wheels(
 
     reward = (torch.square(RL_wheel_speed - FL_wheel_speed) + torch.square(RR_wheel_speed - FR_wheel_speed))
 
+    # print("Reward0: ", reward)
+
     return reward
 
 def ang_vel_z_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize xy-axis base angular velocity using L2-kernel."""
     # extract the used quantities (to enable type-hinting)
     asset: RigidObject = env.scene[asset_cfg.name]
-    return torch.square(asset.data.root_ang_vel_b[:, 2])
+    reward = torch.square(asset.data.root_ang_vel_b[:, 2])
+
+    # print("Reward1: ", reward)
+
+    return reward
+
+def joint_acc_l2_m4(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize joint accelerations on the articulation using L2-kernel.
+
+    NOTE: Only the joints configured in :attr:`asset_cfg.joint_ids` will have their joint accelerations contribute to the L2 norm.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: Articulation = env.scene[asset_cfg.name]
+    reward = torch.sum(torch.square(asset.data.joint_acc), dim=1)
+    # print("Acc: ", asset.data.joint_acc)
+    # print("Reward2: ", reward)
+
+    return reward
 
 
 def reverse_movement(
@@ -122,12 +119,36 @@ def all_wheels_moving(
 
     # Reward function that penalizes differences in wheel speeds
     reward = (abs(diff_rear) + abs(diff_front))
-    # print("Reward 2: ", reward)
+
+    return reward
+
+def balanced_wheels(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    
+    # Get the velocities of the wheels
+    wheel_speeds = asset.data.joint_vel[:, asset_cfg.joint_ids][:, :4]  # Assuming the first 4 joint IDs correspond to the wheels
+
+    # Calculate the differences in velocities between each pair of wheels
+    FL_wheel_speed = wheel_speeds[:, 0]  # Front Left wheel
+    FR_wheel_speed = wheel_speeds[:, 1]  # Front Right wheel
+    RL_wheel_speed = wheel_speeds[:, 2]  # Rear Left wheel
+    RR_wheel_speed = wheel_speeds[:, 3]  # Rear Right wheel
+    
+    # Calculate the norms of the differences between each pair
+    diff_rear = torch.square(abs(RL_wheel_speed) - abs(RR_wheel_speed))
+    diff_front = torch.square(abs(FL_wheel_speed) - abs(FR_wheel_speed))
+
+    # Reward function that penalizes differences in wheel speeds
+    reward = diff_rear + diff_front
+
     return reward
 
 
 def track_lin_vel_xy_m4(
-    env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
     """Reward tracking of linear velocity commands (xy axes) using exponential kernel."""
     # extract the used quantities (to enable type-hinting)
@@ -149,10 +170,10 @@ def track_lin_vel_xy_m4(
     # print("non_zero_command: ", non_zero_command)
 
     # compute the error
-    lin_vel_error = torch.norm((env.command_manager.get_command(command_name) - asset.data.root_lin_vel_b), dim=1)
-    print("lin_vel_error: ", lin_vel_error)
+    reward = torch.sum(torch.square((env.command_manager.get_command(command_name) - asset.data.root_lin_vel_b)), dim=1)
+    # print("Reward3: ", reward)
 
-    return lin_vel_error
+    return reward
 
 def track_lin_vel_xy_exp_m4(
     env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
@@ -161,30 +182,12 @@ def track_lin_vel_xy_exp_m4(
     # extract the used quantities (to enable type-hinting)
     asset: RigidObject = env.scene[asset_cfg.name]
     # compute the error
-    # lin_vel_error = torch.sum(
-    #     torch.square(env.command_manager.get_command(command_name)[:, :2] - asset.data.root_lin_vel_b[:, :2]),
-    #     dim=1,
-    # )
-    # print("Actions: ", env.action_manager.get_term("joint_vel").processed_actions)
-    # actions = env.action_manager.get_term("joint_vel").processed_actions.clone()
-    # duplicated_actions = actions_copy.repeat(1, 2) # Replicating rear_left and rear_right wheels movement to front_left and front_right wheels
-    
-    # asset.write_joint_state_to_sim(joint_pos, joint_vel, ["rear"])
-    # print("Joint_pos: ", asset.data.joint_pos[:, 2:])
-
-
-    lin_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 0] - asset.data.root_lin_vel_b[:, 0])
-    # lin_vel_error = abs(env.command_manager.get_command(command_name)[:, 0] - asset.data.root_lin_vel_b[:, 0])
-    # print("Raw Action: ", env.action_manager.get_term("joint_vel").raw_actions)
-    # print("Processed Action: ", env.action_manager.get_term("joint_vel").processed_actions)
-    # print("Command: ", env.command_manager.get_command(command_name)[:, 0])
-    # print("Robot: ", asset.data.root_lin_vel_b[:, 0])
-    # print("lin_vel_error: ", torch.exp(-lin_vel_error / std**2))
-    # print("Lin error: ", lin_vel_error)
-    # print("Reward: ", torch.exp(-lin_vel_error / std**2))
-    # return torch.exp(-lin_vel_error / std**2)
-
-    return lin_vel_error
+    lin_vel_error = torch.sum(
+        torch.square(env.command_manager.get_command(command_name)[:, :2] - asset.data.root_lin_vel_b[:, :2]),
+        dim=1,
+    )
+    reward = torch.exp(-lin_vel_error / std**2)
+    return reward
 
 def non_zero_speed(
     env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"), threshold: float = 0.01

@@ -21,8 +21,8 @@ class M4VelocityPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
-        actor_hidden_dims=[256, 256, 256, 256],
-        critic_hidden_dims=[256, 256, 256, 256],
+        actor_hidden_dims=[256, 256, 256],
+        critic_hidden_dims=[256, 256, 256],
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(

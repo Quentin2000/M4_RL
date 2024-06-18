@@ -273,15 +273,17 @@ class RewardsCfg:
     )
 
     # -- task
+    # track_lin_vel_xy_exp = RewTerm(
+    #     func=mdp.track_lin_vel_xy_exp_m4, weight=2.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    # )
     track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=2.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        func=mdp.track_lin_vel_xy_m4, weight=-20.0, params={"command_name": "base_velocity"}
     )
-
     # -- penalties
     # reverse_movement = RewTerm(func=mdp.reverse_movement, weight=-10.0, params={"command_name": "base_velocity"})
-    ang_vel_z_l2 = RewTerm(func=mdp.ang_vel_z_l2, weight=-2.0)
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1000.0)
+    ang_vel_z_l2 = RewTerm(func=mdp.ang_vel_z_l2, weight=-100)
     differential_wheels = RewTerm(func=mdp.diff_wheels, weight=-0.01)
+    balanced_wheels = RewTerm(func=mdp.balanced_wheels, weight=-0.01)
 
 
     # -- optional penalties
