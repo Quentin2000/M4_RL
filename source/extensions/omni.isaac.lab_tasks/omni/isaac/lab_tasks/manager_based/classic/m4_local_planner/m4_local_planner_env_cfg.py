@@ -4,8 +4,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
-import wandb
-from dataclasses import MISSING
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.actuators import ImplicitActuatorCfg, DCMotorCfg
@@ -25,129 +23,17 @@ from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from omni.isaac.lab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-import omni.isaac.lab_tasks.manager_based.classic.m4_velocity.mdp as mdp
+import omni.isaac.lab_tasks.manager_based.classic.m4_local_planner.mdp as mdp
+from omni.isaac.lab_tasks.manager_based.classic.m4_velocity.m4_velocity_env_cfg import M4VelocityEnvCfg
 
 ##
 # Pre-defined configs
 ##
-from omni.isaac.lab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
-
+LOW_LEVEL_ENV_CFG = M4VelocityEnvCfg()
 
 ##
 # Scene definition
 ##
-
-
-@configclass
-class MySceneCfg(InteractiveSceneCfg):
-    """Configuration for the terrain scene with a legged robot."""
-
-    # ground terrain
-    terrain = TerrainImporterCfg(
-        prim_path="/World/ground",
-        terrain_type="plane",
-        collision_group=-1,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
-            friction_combine_mode="average",
-            restitution_combine_mode="average",
-            static_friction=1.0,
-            dynamic_friction=1.0,
-        ),
-        visual_material=sim_utils.MdlFileCfg(
-            mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
-            project_uvw=True,
-            texture_scale=(0.25, 0.25),
-        ),
-        debug_vis=False,
-    )
-    # robots
-    robot = ArticulationCfg(
-        prim_path="{ENV_REGEX_NS}/Robot",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=f"/home/m4/IsaacLab/source/extensions/omni.isaac.lab_assets/data/Robots/Caltech/m4_fixed_blade_hip_leg.usd",
-            activate_contact_sensors = True,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                disable_gravity=False,
-                # rigid_body_enabled=True,
-                retain_accelerations=False,
-                # linear_damping=0.0,
-                # angular_damping=0.0,
-                # max_linear_velocity=100.0,
-                # max_angular_velocity=100.0,
-                max_depenetration_velocity=10.0,
-                enable_gyroscopic_forces=True,
-            ),
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                enabled_self_collisions=False,
-                solver_position_iteration_count=4,
-                solver_velocity_iteration_count=0,
-                # fix_root_link=True,
-                sleep_threshold=0.005,
-                stabilization_threshold=0.001,
-            ),
-        ),
-        init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0, 0.0, 0.35), 
-            joint_pos={
-                # ".*hip_joint": 0.0,
-                # ".*leg_joint": 0.0,
-                ".*wheel_joint": 0.0, 
-            },
-            joint_vel={
-                # "rear_right_wheel_joint": 0.0,
-                # "rear_left_wheel_joint": 5.0,
-                # "front_right_wheel_joint": 10.0,
-                # "front_left_wheel_joint": 15.0,
-                ".*wheel_joint": 10.0, 
-            },
-        ),
-        actuators={
-            # "hip_motors": ImplicitActuatorCfg(
-            #     joint_names_expr=[".*hip_joint"],
-            #     effort_limit=80.0,
-            #     velocity_limit=0.001,
-            #     stiffness={".*hip_joint": 5.0},
-            #     damping={".*hip_joint": 0.5},
-            # ),
-            # "leg_motors": ImplicitActuatorCfg(
-            #     joint_names_expr=[".*leg_joint"],
-            #     effort_limit=80.0,
-            #     velocity_limit=0.001,
-            #     stiffness={".*leg_joint": 5.0},
-            #     damping={".*leg_joint": 0.5},
-            # ),
-            # "wheel_motors": DCMotorCfg(
-            #     joint_names_expr=[".*wheel_joint"],
-            #     saturation_effort=120, #120
-            #     effort_limit=70, #40      Torque constant * max A [N-m]
-            #     velocity_limit=10, #10    KV/(V*reduction)
-            #     stiffness={".*": 4000.0}, #10000
-            #     damping={".*": 0.0},
-            # ),
-            "wheel_motors": ImplicitActuatorCfg(
-                joint_names_expr=[".*wheel_joint"],
-                # saturation_effort=12000, #120
-                # effort_limit=70, #40      Torque constant * max A [N-m]
-                # velocity_limit=200, #10    KV/(V*reduction)
-                stiffness=0.0, #10000
-                damping=0.0,
-            ),
-        },
-    )
-    # sensors
-    # height_scanner dFalse,
-    #     mesh_prim_paths=["/World/ground"],
-    # )
-    # contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
-    # lights
-    sky_light = AssetBaseCfg(
-        prim_path="/World/skyLight",
-        spawn=sim_utils.DomeLightCfg(
-            intensity=750.0,
-            texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
-        ),
-    )
-
 
 ##
 # MDP settings
@@ -162,17 +48,12 @@ class CommandsCfg:
     # Blue is current velocity
     # Green is goal velocity
 
-    base_velocity = mdp.UniformVelocityCommandCfg(
+    pose_command = mdp.UniformPose2dCommandCfg(
         asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.02,
-        rel_heading_envs=1.0,
-        heading_command=True,
-        heading_control_stiffness=0.5,
+        simple_heading=False,
+        resampling_time_range=(8.0, 8.0),
         debug_vis=True,
-        ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.0001, 0.0001), ang_vel_z=(-0.3, 0.3), heading=(-math.pi, math.pi), 
-        ),
+        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-3.0, 3.0), pos_y=(-3.0, 3.0), heading=(-math.pi, math.pi)),
     )
 
     # pose_command = mdp.UniformPoseCommandCfg(
@@ -206,7 +87,14 @@ class ActionsCfg:
     """Action specifications for the MDP."""
 
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*hip_joint", ".*leg_joint"], scale=1.0, use_default_offset=True)
-    joint_vel = mdp.JointVelocityActionCfg(asset_name="robot", joint_names=[".*"], scale=5.0, use_default_offset=False, debug_vis=True)
+    # joint_vel = mdp.JointVelocityActionCfg(asset_name="robot", joint_names=[".*"], scale=5.0, use_default_offset=False, debug_vis=True)
+    pre_trained_policy_action: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
+        asset_name="robot",
+        policy_path=f"/home/m4/IsaacLab/logs/rsl_rl/m4_velocity/delfosse-rl4/model_1499.pt",
+        low_level_decimation=4,
+        low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_vel,
+        low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
+    )
 
 @configclass
 class ObservationsCfg:
@@ -268,24 +156,31 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     # -- apply velocity actions
-    apply_actions = RewTerm(
-        func=mdp.apply_actions, weight=1.0, params={"command_name": "base_velocity"}
-    )
+    # apply_actions = RewTerm(
+    #     func=mdp.apply_actions, weight=1.0, params={"command_name": "base_velocity"}
+    # )
 
     # -- task
-    # track_lin_vel_xy_exp = RewTerm(
-    #     func=mdp.track_lin_vel_xy_exp_m4, weight=2.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    # )
-    track_lin_vel_xy = RewTerm(
-        func=mdp.track_lin_vel_xy_m4, weight=-20.0, params={"command_name": "base_velocity"}
+    position_tracking = RewTerm(
+        func=mdp.position_command_error_tanh,
+        weight=0.5,
+        params={"std": 2.0, "command_name": "pose_command"},
     )
-    track_ang_vel_z = RewTerm(
-        func=mdp.track_ang_vel_z_m4, weight=-20.0, params={"command_name": "base_velocity"}
+    position_tracking_fine_grained = RewTerm(
+        func=mdp.position_command_error_tanh,
+        weight=0.5,
+        params={"std": 0.2, "command_name": "pose_command"},
     )
+    orientation_tracking = RewTerm(
+        func=mdp.heading_command_error_abs,
+        weight=-0.2,
+        params={"command_name": "pose_command"},
+    )
+
     # -- penalties
     # reverse_movement = RewTerm(func=mdp.reverse_movement, weight=-10.0, params={"command_name": "base_velocity"})
     # ang_vel_z_l2 = RewTerm(func=mdp.ang_vel_z_l2, weight=-100)
-    differential_wheels = RewTerm(func=mdp.diff_wheels_tanh, weight=-0.01)
+    # differential_wheels = RewTerm(func=mdp.diff_wheels_tanh, weight=-0.01)
     # differential_wheels = RewTerm(func=mdp.diff_wheels_tanh, weight=1.0, params={"std": 2.0})
     # differential_wheels_fine_grained = RewTerm(func=mdp.diff_wheels_tanh, weight=1.0, params={"std": 0.2})
     # balanced_wheels = RewTerm(func=mdp.balanced_wheels, weight=-0.01) // REMOVED BECAUSE CAN'T TURN WHILE MOVING FORWARD IF BOTH SIDES CAN'T HAVE DIFFERENT SPEEDS
@@ -312,14 +207,14 @@ class CurriculumCfg:
 
 
 @configclass
-class M4VelocityEnvCfg(ManagerBasedRLEnvCfg):
+class M4LocalPlannerEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
     # Init online scores monitor
     # wandb.init(project='M4_RL_Velocity', entity='m4')
 
     # Scene settings
-    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: SceneEntityCfg = LOW_LEVEL_ENV_CFG.scene
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -333,12 +228,12 @@ class M4VelocityEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = 4
-        self.episode_length_s = 20.0
+        self.decimation = LOW_LEVEL_ENV_CFG.decimation * 10
+        self.episode_length_s = self.commands.pose_command.resampling_time_range[1]
         # simulation settings
-        self.sim.dt = 0.005
-        self.sim.disable_contact_processing = True
-        self.sim.physics_material = self.scene.terrain.physics_material
+        self.sim.dt = LOW_LEVEL_ENV_CFG.sim.dt
+        # self.sim.disable_contact_processing = True
+        # self.sim.physics_material = self.scene.terrain.physics_material
         # update sensor update periods
         # we tick all the sensors based on the smallest update period (physics update period)
         # if self.scene.height_scanner is not None:

@@ -13,11 +13,11 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 
 
 @configclass
-class M4VelocityPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class M4LocalPlannerPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 2000
     save_interval = 50
-    experiment_name = "m4_velocity"
+    experiment_name = "m4_local_planner"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,

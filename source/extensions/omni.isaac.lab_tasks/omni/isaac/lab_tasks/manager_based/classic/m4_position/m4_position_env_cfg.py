@@ -25,7 +25,7 @@ from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from omni.isaac.lab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-import omni.isaac.lab_tasks.manager_based.classic.m4_velocity.mdp as mdp
+import omni.isaac.lab_tasks.manager_based.classic.m4_position.mdp as mdp
 
 ##
 # Pre-defined configs
@@ -64,7 +64,7 @@ class MySceneCfg(InteractiveSceneCfg):
     robot = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/Robot",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=f"/home/m4/IsaacLab/source/extensions/omni.isaac.lab_assets/data/Robots/Caltech/m4_fixed_blade_hip_leg.usd",
+            usd_path=f"/home/m4/IsaacLab/source/extensions/omni.isaac.lab_assets/data/Robots/Caltech/m4_fixed_blade_leg.usd",
             activate_contact_sensors = True,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=False,
@@ -89,11 +89,13 @@ class MySceneCfg(InteractiveSceneCfg):
         init_state=ArticulationCfg.InitialStateCfg(
             pos=(0.0, 0.0, 0.35), 
             joint_pos={
-                # ".*hip_joint": 0.0,
+                ".*hip_joint": 0.0,
                 # ".*leg_joint": 0.0,
                 ".*wheel_joint": 0.0, 
             },
             joint_vel={
+                ".*hip_joint": 0.0,
+                # ".*leg_joint": 0.0,
                 # "rear_right_wheel_joint": 0.0,
                 # "rear_left_wheel_joint": 5.0,
                 # "front_right_wheel_joint": 10.0,
@@ -102,27 +104,19 @@ class MySceneCfg(InteractiveSceneCfg):
             },
         ),
         actuators={
-            # "hip_motors": ImplicitActuatorCfg(
-            #     joint_names_expr=[".*hip_joint"],
-            #     effort_limit=80.0,
-            #     velocity_limit=0.001,
-            #     stiffness={".*hip_joint": 5.0},
-            #     damping={".*hip_joint": 0.5},
-            # ),
+            "hip_motors": ImplicitActuatorCfg(
+                joint_names_expr=[".*hip_joint"],
+                effort_limit=80.0,
+                velocity_limit=0.001,
+                stiffness=0.0,
+                damping=0.0,
+            ),
             # "leg_motors": ImplicitActuatorCfg(
             #     joint_names_expr=[".*leg_joint"],
             #     effort_limit=80.0,
             #     velocity_limit=0.001,
-            #     stiffness={".*leg_joint": 5.0},
-            #     damping={".*leg_joint": 0.5},
-            # ),
-            # "wheel_motors": DCMotorCfg(
-            #     joint_names_expr=[".*wheel_joint"],
-            #     saturation_effort=120, #120
-            #     effort_limit=70, #40      Torque constant * max A [N-m]
-            #     velocity_limit=10, #10    KV/(V*reduction)
-            #     stiffness={".*": 4000.0}, #10000
-            #     damping={".*": 0.0},
+            #     stiffness=0.0,
+            #     damping=0.5,
             # ),
             "wheel_motors": ImplicitActuatorCfg(
                 joint_names_expr=[".*wheel_joint"],
@@ -162,43 +156,31 @@ class CommandsCfg:
     # Blue is current velocity
     # Green is goal velocity
 
-    base_velocity = mdp.UniformVelocityCommandCfg(
+    xy_command = mdp.UniformPose2dCommandCfg(
         asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.02,
-        rel_heading_envs=1.0,
-        heading_command=True,
-        heading_control_stiffness=0.5,
+        simple_heading=False,
+        resampling_time_range=(8.0, 8.0),
         debug_vis=True,
-        ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.0001, 0.0001), ang_vel_z=(-0.3, 0.3), heading=(-math.pi, math.pi), 
-        ),
+        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-3.0, 3.0), pos_y=(-3.0, 3.0), heading=(-math.pi, math.pi)),
     )
 
-    # pose_command = mdp.UniformPoseCommandCfg(
+    # z_command = mdp.UniformPose2dCommandCfg(
     #     asset_name="robot",
-    #     # body_name=".*",
+    #     simple_heading=False,
     #     resampling_time_range=(8.0, 8.0),
     #     debug_vis=True,
-    #     ranges=mdp.UniformPoseCommandCfg.Ranges(
-    #         pos_x=(-2.0, 2.0),
-    #         pos_y=(-2.0, 2.0),
-    #         pos_z=(-0.1, 0.0),
-    #         roll=(0.0, 0.0),
-    #         pitch=(0.0, 0.0),
-    #         yaw=(-3.14, 3.14),
-    #     ),
+    #     ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(0.2, 0.35), pos_y=(-0.000001, 0.000001), heading=(-0.000001, 0.000001)),
     # )
 
-    # pose_command = mdp.TerrainBasedPose2dCommandCfg(
-    #     asset_name="robot",
-    #     simple_heading = False,
-    #     resampling_time_range=(8.0, 8.0),
-    #     debug_vis=True,
-    #     ranges=mdp.TerrainBasedPose2dCommandCfg.Ranges(
-    #         heading=(-3.14, 3.14),
-    #     ),
-    # )
+    z_command = mdp.UniformPoseCommandCfg(
+        asset_name="robot",
+        body_name="base_link",  # will be set by agent env cfg
+        resampling_time_range=(8.0, 8.0),
+        debug_vis=True,
+        ranges=mdp.UniformPoseCommandCfg.Ranges(
+            pos_x=(0.0001, 0.0001), pos_y=(-0.0001, 0.0001), pos_z=(0.25, 0.3475), roll=(0.0, 0.0), pitch=(0.0, 0.0), yaw=(0.0, 0.0)
+        ),
+    )
 
 
 @configclass
@@ -206,7 +188,8 @@ class ActionsCfg:
     """Action specifications for the MDP."""
 
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*hip_joint", ".*leg_joint"], scale=1.0, use_default_offset=True)
-    joint_vel = mdp.JointVelocityActionCfg(asset_name="robot", joint_names=[".*"], scale=5.0, use_default_offset=False, debug_vis=True)
+    joint_vel = mdp.JointVelocityActionCfg(asset_name="robot", joint_names=[".*wheel_joint"], scale=5.0, use_default_offset=False, debug_vis=True)
+    elevation = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*hip_joint"], scale=0.5, use_default_offset=True, debug_vis=True)
 
 @configclass
 class ObservationsCfg:
@@ -217,10 +200,13 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
+        base_pose_z = ObsTerm(func=mdp.base_pos_z, noise=Unoise(n_min=-0.01, n_max=0.01))
+        root_pos_w = ObsTerm(func=mdp.root_pos_w, noise=Unoise(n_min=-0.01, n_max=0.01))
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.01, n_max=0.01))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.02, n_max=0.02))
-        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
-        # joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        xy_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "xy_command"})
+        z_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "z_command"})
+        joint_pos = ObsTerm(func=mdp.joint_pos, noise=Unoise(n_min=-0.01, n_max=0.01))
         # joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         joint_vel = ObsTerm(func=mdp.joint_vel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
@@ -276,23 +262,36 @@ class RewardsCfg:
     # track_lin_vel_xy_exp = RewTerm(
     #     func=mdp.track_lin_vel_xy_exp_m4, weight=2.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     # )
-    track_lin_vel_xy = RewTerm(
-        func=mdp.track_lin_vel_xy_m4, weight=-20.0, params={"command_name": "base_velocity"}
+    position_tracking = RewTerm(
+        func=mdp.position_command_error_tanh_m4,
+        weight=-0.5,
+        params={"std": 2.0, "command_name_xy": "xy_command", "command_name_z": "z_command"},
     )
-    track_ang_vel_z = RewTerm(
-        func=mdp.track_ang_vel_z_m4, weight=-20.0, params={"command_name": "base_velocity"}
+    position_tracking_fine_grained = RewTerm(
+        func=mdp.position_command_error_tanh_m4,
+        weight=-0.5,
+        params={"std": 0.2, "command_name_xy": "xy_command", "command_name_z": "z_command"},
     )
+    orientation_tracking = RewTerm(
+        func=mdp.heading_command_error_abs_m4,
+        weight=-0.2,
+        params={"command_name": "xy_command"},
+    )
+    elevation_tracking = RewTerm(
+        func=mdp.elevation_command_error_tanh_m4,
+        weight=-1.0,
+        params={"std": 2.0, "elevation_command": "z_command"},
+    )
+
+
     # -- penalties
     # reverse_movement = RewTerm(func=mdp.reverse_movement, weight=-10.0, params={"command_name": "base_velocity"})
     # ang_vel_z_l2 = RewTerm(func=mdp.ang_vel_z_l2, weight=-100)
-    differential_wheels = RewTerm(func=mdp.diff_wheels_tanh, weight=-0.01)
-    # differential_wheels = RewTerm(func=mdp.diff_wheels_tanh, weight=1.0, params={"std": 2.0})
-    # differential_wheels_fine_grained = RewTerm(func=mdp.diff_wheels_tanh, weight=1.0, params={"std": 0.2})
-    # balanced_wheels = RewTerm(func=mdp.balanced_wheels, weight=-0.01) // REMOVED BECAUSE CAN'T TURN WHILE MOVING FORWARD IF BOTH SIDES CAN'T HAVE DIFFERENT SPEEDS
-
+    differential_wheels = RewTerm(func=mdp.diff_wheels, weight=-0.01)
+    # balanced_wheels = RewTerm(func=mdp.balanced_wheels, weight=-0.01)
 
     # -- optional penalties
-    # flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.01)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-100.0)
 
 
 @configclass
@@ -312,7 +311,7 @@ class CurriculumCfg:
 
 
 @configclass
-class M4VelocityEnvCfg(ManagerBasedRLEnvCfg):
+class M4PositionEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
     # Init online scores monitor
@@ -334,7 +333,7 @@ class M4VelocityEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 20.0
+        self.episode_length_s = self.commands.xy_command.resampling_time_range[1]
         # simulation settings
         self.sim.dt = 0.005
         self.sim.disable_contact_processing = True

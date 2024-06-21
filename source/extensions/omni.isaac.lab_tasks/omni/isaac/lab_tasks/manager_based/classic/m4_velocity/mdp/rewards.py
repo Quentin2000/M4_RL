@@ -48,6 +48,22 @@ def diff_wheels(
 
     return reward
 
+def diff_wheels_tanh(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"), std: float = 2.0
+) -> torch.Tensor:
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    FL_wheel_speed = asset.data.joint_vel[:, 0]
+    FR_wheel_speed = asset.data.joint_vel[:, 1]
+    RL_wheel_speed = asset.data.joint_vel[:, 2]
+    RR_wheel_speed = asset.data.joint_vel[:, 3]
+
+    reward = (abs(RL_wheel_speed - FL_wheel_speed) + abs(RR_wheel_speed - FR_wheel_speed))
+
+    # print("Reward0: ", reward)
+
+    return 1 - torch.tanh(reward / std)
+
 def ang_vel_z_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize xy-axis base angular velocity using L2-kernel."""
     # extract the used quantities (to enable type-hinting)
@@ -188,6 +204,16 @@ def track_lin_vel_xy_exp_m4(
     )
     reward = torch.exp(-lin_vel_error / std**2)
     return reward
+
+def track_ang_vel_z_m4(
+    env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward tracking of angular velocity commands (yaw) using exponential kernel."""
+    # extract the used quantities (to enable type-hinting)
+    asset: RigidObject = env.scene[asset_cfg.name]
+    # compute the error
+    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
+    return ang_vel_error
 
 def non_zero_speed(
     env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"), threshold: float = 0.01
