@@ -54,7 +54,7 @@ class CommandsCfg:
         simple_heading=False,
         resampling_time_range=(8.0, 8.0),
         debug_vis=True,
-        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-3.0, 3.0), pos_y=(-3.0, 3.0), heading=(-math.pi, math.pi)),
+        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-1.0, 1.0), pos_y=(-1.0, 1.0), heading=(-math.pi, math.pi)),
     )
 
     z_command = mdp.UniformPoseCommandCfg(
@@ -172,30 +172,38 @@ class RewardsCfg:
         func=mdp.apply_actions, weight=1.0, params={"command_name": "z_command"}
     )
 
-    # distance_from_geodesic = RewTerm(
-    #     func=mdp.distance_from_geodesic, weight=1.0, params={"command_name": "pose_command"}
-    # )
-
     # -- task
     position_tracking = RewTerm(
         func=mdp.position_command_error_m4,
         weight=-0.5,
         params={"std": 2.0, "command_name": "pose_command"},
     )
-    position_tracking_fine_grained = RewTerm(
-        func=mdp.position_command_error_m4,
-        weight=-0.5,
-        params={"std": 0.2, "command_name": "pose_command"},
-    )
+    # position_tracking_fine_grained = RewTerm(
+    #     func=mdp.position_command_error_m4,
+    #     weight=-0.5,
+    #     params={"std": 0.2, "command_name": "pose_command"},
+    # )
     orientation_tracking = RewTerm(
         func=mdp.heading_command_error_m4,
         weight=-0.2,
         params={"command_name": "pose_command"},
     )
 
-    # -- penalties
-    
 
+    # -- penalties
+    distance_from_geodesic = RewTerm(
+        func=mdp.distance_from_geodesic, weight=-10.0, params={"command_name": "pose_command"}
+    )
+    lin_speed_limit_reached = RewTerm(
+        func=mdp.lin_speed_limit_reached,
+        weight=-1.0,
+        params={"threshold": 0.5}
+    )
+    ang_speed_limit_reached = RewTerm(
+        func=mdp.ang_speed_limit_reached,
+        weight=-1.0,
+        params={"threshold": 0.3}
+    )
     # reverse_movement = RewTerm(func=mdp.reverse_movement, weight=-10.0, params={"command_name": "base_velocity"})
     # ang_vel_z_l2 = RewTerm(func=mdp.ang_vel_z_l2, weight=-100)
     # differential_wheels = RewTerm(func=mdp.diff_wheels_tanh, weight=-0.01)
@@ -213,6 +221,22 @@ class TerminationsCfg:
     """Termination terms for the MDP."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    reversed_robot = DoneTerm(
+        func=mdp.reversed_robot
+    )
+    reached_goal = DoneTerm(
+        func=mdp.reached_goal,
+        params={"threshold": 0.195, "command_name": "pose_command"} # Allowing for delta_x = 0.1, delta_y = 0.1, delta_z = 0.1, delta_heading = 0.09 (5 degrees error) gives a norm of 0.195
+    )
+    # lin_speed_limit_reached = DoneTerm(
+    #     func=mdp.lin_speed_limit_reached,
+    #     params={"threshold": 0.5}
+    # )
+    # ang_speed_limit_reached = DoneTerm(
+    #     func=mdp.ang_speed_limit_reached,
+    #     params={"threshold": 0.3}
+    # )
+
 
 
 @configclass

@@ -99,7 +99,7 @@ class MySceneCfg(InteractiveSceneCfg):
                 # "rear_left_wheel_joint": 5.0,
                 # "front_right_wheel_joint": 10.0,
                 # "front_left_wheel_joint": 15.0,
-                ".*wheel_joint": 10.0, 
+                ".*wheel_joint": 0.0, 
             },
         ),
         actuators={
@@ -129,7 +129,7 @@ class MySceneCfg(InteractiveSceneCfg):
                 joint_names_expr=[".*wheel_joint"],
                 # saturation_effort=12000, #120
                 # effort_limit=70, #40      Torque constant * max A [N-m]
-                # velocity_limit=200, #10    KV/(V*reduction)
+                velocity_limit=0.00001, #10    KV/(V*reduction)
                 stiffness=0.0, #10000
                 damping=4.0,
             ),
