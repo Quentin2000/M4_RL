@@ -54,7 +54,6 @@ class ActionsCfg:
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
     )
 
-
 @configclass
 class ObservationsCfg:
     """Observation specifications for the MDP."""
