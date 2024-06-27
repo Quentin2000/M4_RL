@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import torch
+import math
 from typing import TYPE_CHECKING
 
 from omni.isaac.lab.assets import RigidObject
@@ -23,17 +24,30 @@ def apply_actions(
 ) -> torch.Tensor:
 
     asset: RigidObject = env.scene[asset_cfg.name]
+    height_command = env.command_manager.get_command(command_name)[:, 0]
 
-    max_height = 0.3475
-    # min_height = 0.30
+    max_height = 0.32
+    # rotation_center_offset_from_max_height = 0.02
+    dist_center_rotation_to_leg = 0.10
+    diag = math.sqrt(dist_center_rotation_to_leg*dist_center_rotation_to_leg + max_height*max_height)
+
+    # print("Diag: ", diag)
+
+    diag_init_ang = math.acos(max_height/diag)
+    # print("Diag_init_angle: ", diag_init_ang)
+
+    target = torch.arccos((height_command)/(diag)) - diag_init_ang
     
-    hip_joint_indices, _ = asset.find_joints(["front_left_hip_joint", "front_right_hip_joint", "rear_left_hip_joint", "rear_right_hip_joint"], preserve_order = True)
-
-    height_command = env.command_manager.get_command(command_name)[:, 2]
-
-    target = torch.arccos(height_command/max_height)
     target = target.unsqueeze(1).repeat(1, 4)
 
+    # print("Height command: ", height_command)
+    # print("Current height: ", asset.data.body_state_w[:, 0, 2])
+    # print("Current height root: ", asset.data.root_pos_w[:, 2])
+
+    hip_joint_indices, _ = asset.find_joints(["front_left_hip_joint", "front_right_hip_joint", "rear_left_hip_joint", "rear_right_hip_joint"], preserve_order = True)
+    # print("Hip indices", hip_joint_indices)
+    # print("Target: ", target)
+    # print("Pos: ", asset.data.joint_pos[:,hip_joint_indices])
     asset.set_joint_position_target(target=target, joint_ids=hip_joint_indices)
 
     return 0.0
@@ -245,6 +259,18 @@ def track_lin_vel_xy_m4(
 
     return reward
 
+def track_lin_vel_x_m4(
+    env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward tracking of linear velocity commands (xy axes) using exponential kernel."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    # compute the error
+    reward = torch.square((env.command_manager.get_command(command_name)[:, 0] - asset.data.root_lin_vel_b[:, 0]))
+    # print("Reward3: ", reward)
+
+    return reward
+
 def track_lin_vel_xy_exp_m4(
     env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
@@ -266,7 +292,7 @@ def track_ang_vel_z_m4(
     # extract the used quantities (to enable type-hinting)
     asset: RigidObject = env.scene[asset_cfg.name]
     # compute the error
-    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_b[:, 2])
+    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 1] - asset.data.root_ang_vel_b[:, 2])
     return ang_vel_error
 
 def non_zero_speed(

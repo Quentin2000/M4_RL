@@ -113,17 +113,9 @@ class MySceneCfg(InteractiveSceneCfg):
             # "leg_motors": ImplicitActuatorCfg(
             #     joint_names_expr=[".*leg_joint"],
             #     effort_limit=80.0,
-            #     velocity_limit=0.001,
-            #     stiffness={".*leg_joint": 5.0},
-            #     damping={".*leg_joint": 0.5},
-            # ),
-            # "wheel_motors": DCMotorCfg(
-            #     joint_names_expr=[".*wheel_joint"],
-            #     saturation_effort=120, #120
-            #     effort_limit=70, #40      Torque constant * max A [N-m]
-            #     velocity_limit=10, #10    KV/(V*reduction)
-            #     stiffness={".*": 4000.0}, #10000
-            #     damping={".*": 0.0},
+            #     velocity_limit=2.0,
+            #     stiffness= 80.0,
+            #     damping= 4.0,
             # ),
             "wheel_motors": ImplicitActuatorCfg(
                 joint_names_expr=[".*wheel_joint"],
@@ -163,7 +155,7 @@ class CommandsCfg:
     # Blue is current velocity
     # Green is goal velocity
 
-    base_velocity = mdp.UniformVelocityCommandCfg(
+    base_velocity = mdp.UniformVelocityXCommandCfg(
         asset_name="robot",
         resampling_time_range=(10.0, 10.0),
         rel_standing_envs=0.02,
@@ -172,51 +164,26 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.0001, 0.0001), ang_vel_z=(-0.3, 0.3), heading=(-math.pi, math.pi), 
+            lin_vel_x=(-0.5, 0.5), ang_vel_z=(-0.3, 0.3), heading=(-math.pi, math.pi) 
         ),
     )
 
-    z_command = mdp.UniformPoseCommandCfg(
+    z_command = mdp.UniformPoseZCommandCfg(
         asset_name="robot",
         body_name="base_link",  # will be set by agent env cfg
         resampling_time_range=(8.0, 8.0),
         debug_vis=True,
-        ranges=mdp.UniformPoseCommandCfg.Ranges(
-            pos_x=(0.0001, 0.0001), pos_y=(-0.0001, 0.0001), pos_z=(0.28, 0.3475), roll=(0.0, 0.0), pitch=(0.0, 0.0), yaw=(0.0, 0.0)
-        ),
+        ranges=mdp.UniformPoseZCommandCfg.Ranges(
+            pos_z=(0.25, 0.32)
+        )
     )
 
-    # pose_command = mdp.UniformPoseCommandCfg(
-    #     asset_name="robot",
-    #     # body_name=".*",
-    #     resampling_time_range=(8.0, 8.0),
-    #     debug_vis=True,
-    #     ranges=mdp.UniformPoseCommandCfg.Ranges(
-    #         pos_x=(-2.0, 2.0),
-    #         pos_y=(-2.0, 2.0),
-    #         pos_z=(-0.1, 0.0),
-    #         roll=(0.0, 0.0),
-    #         pitch=(0.0, 0.0),
-    #         yaw=(-3.14, 3.14),
-    #     ),
-    # )
-
-    # pose_command = mdp.TerrainBasedPose2dCommandCfg(
-    #     asset_name="robot",
-    #     simple_heading = False,
-    #     resampling_time_range=(8.0, 8.0),
-    #     debug_vis=True,
-    #     ranges=mdp.TerrainBasedPose2dCommandCfg.Ranges(
-    #         heading=(-3.14, 3.14),
-    #     ),
-    # )
 
 
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*hip_joint"], scale=1.0, use_default_offset=True)
     joint_vel = mdp.JointVelocityActionCfg(asset_name="robot", joint_names=[".*wheel_joint"], scale=5.0, use_default_offset=False, debug_vis=True)
 
 @configclass
@@ -232,8 +199,6 @@ class ObservationsCfg:
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.01, n_max=0.01))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.02, n_max=0.02))
         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
-        # z_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "z_command"})
-        # joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp.joint_vel, noise=Unoise(n_min=-1.5, n_max=1.5))
         actions = ObsTerm(func=mdp.last_action)
 
@@ -285,29 +250,16 @@ class RewardsCfg:
     )
 
     # -- task
-    track_lin_vel_xy = RewTerm(
-        func=mdp.track_lin_vel_xy_m4, weight=-20.0, params={"command_name": "base_velocity"}
+    track_lin_vel_x = RewTerm(
+        func=mdp.track_lin_vel_x_m4, weight=-20.0, params={"command_name": "base_velocity"}
     )
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_m4, weight=-20.0, params={"command_name": "base_velocity"}
     )
-    # elevation_tracking = RewTerm(
-    #     func=mdp.elevation_command_error_tanh_m4,
-    #     weight=-1000.0,
-    #     params={"std": 2.0, "elevation_command": "z_command"},
-    # )
-    # elevation_tracking_fine_grained = RewTerm(
-    #     func=mdp.elevation_command_error_tanh_m4,
-    #     weight=-1000.0,
-    #     params={"std": 0.2, "elevation_command": "z_command"},
-    # )
+
     # -- penalties
     differential_wheels = RewTerm(func=mdp.diff_wheels, weight=-0.01, params={"std": 1.0})
-    # differential_wheels_fine_grained = RewTerm(func=mdp.diff_wheels, weight=-100.0, params={"std": 0.1})
 
-    # -- optional penalties
-    # flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-10.0)
-    # balanced_hips = RewTerm(func=mdp.balanced_hips, weight=-10.0)
 
 
 @configclass
@@ -332,11 +284,8 @@ class CurriculumCfg:
 class M4VelocityElevationEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
-    # Init online scores monitor
-    # wandb.init(project='M4_RL_Velocity', entity='m4')
-
     # Scene settings
-    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=10)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -350,24 +299,9 @@ class M4VelocityElevationEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = 4
+        self.decimation = 4 # actions every 0.02 sec (self.sim.dt * self.decimation)
         self.episode_length_s = 20.0
         # simulation settings
         self.sim.dt = 0.005
         self.sim.disable_contact_processing = True
         self.sim.physics_material = self.scene.terrain.physics_material
-        # update sensor update periods
-        # we tick all the sensors based on the smallest update period (physics update period)
-        # if self.scene.height_scanner is not None:
-        #     self.scene.height_scanner.update_period = self.decimation * self.sim.dt
-        # if self.scene.contact_forces is not None:
-        #     self.scene.contact_forces.update_period = self.sim.dt
-
-        # check if terrain levels curriculum is enabled - if so, enable curriculum for terrain generator
-        # this generates terrains with increasing difficulty and is useful for training
-        # if getattr(self.curriculum, "terrain_levels", None) is not None:
-        #     if self.scene.terrain.terrain_generator is not None:
-        #         self.scene.terrain.terrain_generator.curriculum = True
-        # else:
-        #     if self.scene.terrain.terrain_generator is not None:
-        #         self.scene.terrain.terrain_generator.curriculum = False

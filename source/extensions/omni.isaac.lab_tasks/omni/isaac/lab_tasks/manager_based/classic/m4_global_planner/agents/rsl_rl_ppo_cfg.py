@@ -13,16 +13,16 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 
 
 @configclass
-class M4LocalPlannerPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class M4GlobalPlannerPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 1000
-    save_interval = 10
-    experiment_name = "m4_local_planner"
+    max_iterations = 500
+    save_interval = 25
+    experiment_name = "m4_global_planner"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
-        actor_hidden_dims=[128, 128, 128],
-        critic_hidden_dims=[128, 128, 128],
+        actor_hidden_dims=[128, 128],
+        critic_hidden_dims=[128, 128],
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(

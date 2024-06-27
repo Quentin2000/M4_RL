@@ -24,13 +24,13 @@ from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from omni.isaac.lab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from omni.isaac.lab.managers import RandomizationTermCfg as RandTerm
 
-import omni.isaac.lab_tasks.manager_based.classic.m4_local_planner.mdp as mdp
-from omni.isaac.lab_tasks.manager_based.classic.m4_velocity_elevation.m4_velocity_elevation_env_cfg import M4VelocityElevationEnvCfg
+import omni.isaac.lab_tasks.manager_based.classic.m4_global_planner.mdp as mdp
+from omni.isaac.lab_tasks.manager_based.classic.m4_local_planner.m4_local_planner_env_cfg import M4LocalPlannerEnvCfg
 
 ##
 # Pre-defined configs
 ##
-LOW_LEVEL_ENV_CFG = M4VelocityElevationEnvCfg()
+LOW_LEVEL_ENV_CFG = M4LocalPlannerEnvCfg()
 
 ##
 # Scene definition
@@ -49,38 +49,26 @@ class CommandsCfg:
     # Blue is current velocity
     # Green is goal velocity
 
-
-    # The pos_x and pos_y commands are relative to the robot and should tend to 0. 
-    # The pos_z command is directly in world frame, not an offset from current position and will stay at this height
-    pose_command = mdp.UniformPose3dCommandCfg(
+    pose_command = mdp.UniformPose2dCommandCfg(
         asset_name="robot",
         simple_heading=False,
         resampling_time_range=(25.0, 25.0),
         debug_vis=True,
-        ranges=mdp.UniformPose3dCommandCfg.Ranges(pos_x=(-0.5, 0.5), pos_y=(-0.5, 0.5), pos_z=(0.25, 0.32), heading=(-math.pi, math.pi))
+        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-5.0, 5.0), pos_y=(-5.0, 5.0), heading=(-math.pi, math.pi)),
     )
-    
-    # z_command = mdp.UniformPoseCommandCfg(
-    #     asset_name="robot",
-    #     body_name="base_link",  # will be set by agent env cfg
-    #     resampling_time_range=(8.0, 8.0),
-    #     debug_vis=True,
-    #     ranges=mdp.UniformPoseCommandCfg.Ranges(
-    #         pos_x=(0.0001, 0.0001), pos_y=(-0.0001, 0.0001), pos_z=(0.28, 0.3475), roll=(0.0, 0.0), pitch=(0.0, 0.0), yaw=(0.0, 0.0)
-    #     )
-    # )
-
 
 
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    pre_trained_policy_action: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
+    # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*hip_joint", ".*leg_joint"], scale=1.0, use_default_offset=True)
+    # joint_vel = mdp.JointVelocityActionCfg(asset_name="robot", joint_names=[".*"], scale=5.0, use_default_offset=False, debug_vis=True)
+    pre_trained_policy_action_2: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
         asset_name="robot",
-        policy_path=f"/home/m4/IsaacLab/logs/rsl_rl/m4_velocity_elevation/velocity_elevation7/exported/policy.pt",
-        low_level_decimation=4,
-        low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_vel,
+        policy_path=f"/home/m4/IsaacLab/logs/rsl_rl/m4_local_planner/local_planner11/exported/policy.pt",
+        low_level_decimation=4*10,
+        low_level_actions=LOW_LEVEL_ENV_CFG.actions.pre_trained_policy_action,
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
     )
 
@@ -93,14 +81,13 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_pose_z = ObsTerm(func=mdp.base_pos_z, noise=Unoise(n_min=-0.01, n_max=0.01))
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.01, n_max=0.01))
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.02, n_max=0.02))
+        root_pose_w = ObsTerm(func=mdp.root_pos_w, noise=Unoise(n_min=-0.01, n_max=0.01))
         pose_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
-            self.enable_corruption = True
+            self.enable_corruption = False
+            self.concatenate_terms = True
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
@@ -114,7 +101,7 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (-3.14, 3.14)},
+            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0,0.0)},
             "velocity_range": {
                 "x": (-0.0, 0.0),
                 "y": (-0.0, 0.0),
@@ -159,36 +146,17 @@ class RewardsCfg:
     orientation_tracking = RewTerm(
         func=mdp.heading_command_error_m4,
         weight=-0.2,
-        params={"std": 1.0, "command_name": "pose_command"},
+        params={"command_name": "pose_command"},
     )
 
-
-    # -- penalties
-    distance_from_geodesic = RewTerm(
-        func=mdp.distance_from_geodesic, weight=-10.0, params={"command_name": "pose_command"}
-    )
-    # lin_speed_limit_reached = RewTerm(
-    #     func=mdp.lin_speed_limit_reached,
-    #     weight=-1.0,
-    #     params={"threshold": 0.5}
-    # )
-    # ang_speed_limit_reached = RewTerm(
-    #     func=mdp.ang_speed_limit_reached,
-    #     weight=-1.0,
-    #     params={"threshold": 0.6}
-    # )
-    lin_speed_limit_reached_log = RewTerm(
-        func=mdp.lin_speed_limit_reached_log,
-        weight=0.01,
-        params={"threshold": 0.5}
-    )
-    ang_speed_limit_reached_log = RewTerm(
-        func=mdp.ang_speed_limit_reached_log,
-        weight=0.01,
-        params={"threshold": 0.6}
+    local_planner_action_proximity = RewTerm(
+        func=mdp.local_planner_action_proximity,
+        weight=1.0,
+        params={"threshold": 0.3},
     )
 
     # termination_penalty = RewTerm(func=mdp.is_terminated, weight=-400.0)
+    # energy_consumption = RewTerm(func=mdp.energy_consumption, weight=-1.0)
 
 
 @configclass
@@ -203,13 +171,16 @@ class TerminationsCfg:
     #     func=mdp.reached_goal,
     #     params={"threshold": 0.195, "command_name": "pose_command"} # Allowing for delta_x = 0.1, delta_y = 0.1, delta_z = 0.1, delta_heading = 0.09 (5 degrees error) gives a norm of 0.195
     # )
+    # obstacle_contact = DoneTerm(
+    #     func=mdp.obstacle_contact
+    # )
     # lin_speed_limit_reached = DoneTerm(
     #     func=mdp.lin_speed_limit_reached,
     #     params={"threshold": 0.5}
     # )
     # ang_speed_limit_reached = DoneTerm(
     #     func=mdp.ang_speed_limit_reached,
-    #     params={"threshold": 0.6}
+    #     params={"threshold": 0.3}
     # )
 
 
@@ -224,8 +195,11 @@ class CurriculumCfg:
 
 
 @configclass
-class M4LocalPlannerEnvCfg(ManagerBasedRLEnvCfg):
+class M4GlobalPlannerEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
+
+    # Init online scores monitor
+    # wandb.init(project='M4_RL_Velocity', entity='m4')
 
     # Scene settings
     scene: SceneEntityCfg = LOW_LEVEL_ENV_CFG.scene
@@ -242,7 +216,8 @@ class M4LocalPlannerEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = LOW_LEVEL_ENV_CFG.decimation * 10 # actions every 0.2 sec (Explained: self.sim.dt [0.005] * self.decimation [4*10])
+        self.decimation = LOW_LEVEL_ENV_CFG.decimation * 4 # This implies actions every 1.0 sec (Explained: self.sim.dt [0.005] * self.decimation [4*10*5])
         self.episode_length_s = self.commands.pose_command.resampling_time_range[1]
         # simulation settings
         self.sim.dt = LOW_LEVEL_ENV_CFG.sim.dt
+

@@ -13,7 +13,8 @@ import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.assets import Articulation
 from omni.isaac.lab.managers import ActionTerm, ActionTermCfg, ObservationGroupCfg, ObservationManager
 from omni.isaac.lab.markers import VisualizationMarkers
-from omni.isaac.lab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
+from omni.isaac.lab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG, RED_ARROW_X_MARKER_CFG
+from omni.isaac.lab.utils.math import quat_from_euler_xyz
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.assets import check_file_path, read_file
 
@@ -53,8 +54,8 @@ class PreTrainedPolicyAction(ActionTerm):
         # remap some of the low level observations to internal observations
         cfg.low_level_observations.actions.func = lambda dummy_env: self.low_level_actions
         cfg.low_level_observations.actions.params = dict()
-        cfg.low_level_observations.velocity_commands.func = lambda dummy_env: self._raw_actions
-        cfg.low_level_observations.velocity_commands.params = dict()
+        cfg.low_level_observations.pose_commands.func = lambda dummy_env: self._raw_actions
+        cfg.low_level_observations.pose_commands.params = dict()
 
         # add the low level observations to the observation manager
         self._low_level_obs_manager = ObservationManager({"ll_policy": cfg.low_level_observations}, env)
@@ -67,7 +68,7 @@ class PreTrainedPolicyAction(ActionTerm):
 
     @property
     def action_dim(self) -> int:
-        return 2
+        return 4
 
     @property
     def raw_actions(self) -> torch.Tensor:
@@ -96,63 +97,82 @@ class PreTrainedPolicyAction(ActionTerm):
     """
     Debug visualization.
     """
-
+    
     def _set_debug_vis_impl(self, debug_vis: bool):
-        # set visibility of markers
-        # note: parent only deals with callbacks. not their visibility
+        # create markers if necessary for the first tome
         if debug_vis:
-            # create markers if necessary for the first tome
-            if not hasattr(self, "base_vel_goal_visualizer"):
-                # -- goal
-                marker_cfg = GREEN_ARROW_X_MARKER_CFG.copy()
-                marker_cfg.prim_path = "/Visuals/Actions/velocity_goal"
-                marker_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
-                self.base_vel_goal_visualizer = VisualizationMarkers(marker_cfg)
-                # -- current
-                marker_cfg = BLUE_ARROW_X_MARKER_CFG.copy()
-                marker_cfg.prim_path = "/Visuals/Actions/velocity_current"
-                marker_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
-                self.base_vel_visualizer = VisualizationMarkers(marker_cfg)
+            if not hasattr(self, "arrow_goal_visualizer"):
+                marker_cfg = RED_ARROW_X_MARKER_CFG.copy()
+                marker_cfg.markers["arrow"].scale = (0.2, 0.2, 0.8)
+                marker_cfg.prim_path = "/Visuals/Command/pose_goal"
+                self.arrow_goal_visualizer = VisualizationMarkers(marker_cfg)
             # set their visibility to true
-            self.base_vel_goal_visualizer.set_visibility(True)
-            self.base_vel_visualizer.set_visibility(True)
+            self.arrow_goal_visualizer.set_visibility(True)
         else:
-            if hasattr(self, "base_vel_goal_visualizer"):
-                self.base_vel_goal_visualizer.set_visibility(False)
-                self.base_vel_visualizer.set_visibility(False)
+            if hasattr(self, "arrow_goal_visualizer"):
+                self.arrow_goal_visualizer.set_visibility(False)
+
+
+    # def _debug_vis_callback(self, event):
+    #     # Get the existing translations and orientations if they exist
+    #     if hasattr(self, "existing_translations"):
+    #         existing_translations = self.existing_translations
+    #         existing_orientations = self.existing_orientations
+    #     else:
+    #         existing_translations = torch.empty((0, 3), device=self.device)
+    #         existing_orientations = torch.empty((0, 4), device=self.device)
+        
+    #     # New translations and orientations
+    #     raw_actions_xy_from_env_origin = self.raw_actions[:, :2]
+    #     env_origin_xy = self.robot.data.root_pos_w[:, :2]
+
+    #     new_translations_xy_w = raw_actions_xy_from_env_origin + env_origin_xy
+
+    #     new_translations_w = torch.cat((new_translations_xy_w, self.raw_actions[:, 2].unsqueeze(1)), dim=1)
+
+    #     # new_translations_w = self.raw_actions[:, :3]
+    #     new_orientations = quat_from_euler_xyz(
+    #         torch.zeros_like(self.raw_actions[:, 3]),
+    #         torch.zeros_like(self.raw_actions[:, 3]),
+    #         self.raw_actions[:, 3],
+    #     )
+        
+    #     # Concatenate existing and new translations and orientations
+    #     all_translations = torch.cat((existing_translations, new_translations_w), dim=0)
+    #     all_orientations = torch.cat((existing_orientations, new_orientations), dim=0)
+        
+    #     # Update the stored translations and orientations
+    #     self.existing_translations = all_translations
+    #     self.existing_orientations = all_orientations
+        
+    #     # Update the visualization
+    #     self.arrow_goal_visualizer.visualize(
+    #         translations=all_translations,
+    #         orientations=all_orientations,
+    #     )
+
 
     def _debug_vis_callback(self, event):
-        # get marker location
-        # -- base state
-        base_pos_w = self.robot.data.root_pos_w.clone()
-        base_pos_w[:, 2] += 0.5
-        # -- resolve the scales and quaternions
-        vel_des_arrow_scale, vel_des_arrow_quat = self._resolve_xy_velocity_to_arrow(self.raw_actions[:, :2])
-        vel_arrow_scale, vel_arrow_quat = self._resolve_xy_velocity_to_arrow(self.robot.data.root_lin_vel_b[:, :2])
-        # display markers
-        self.base_vel_goal_visualizer.visualize(base_pos_w, vel_des_arrow_quat, vel_des_arrow_scale)
-        self.base_vel_visualizer.visualize(base_pos_w, vel_arrow_quat, vel_arrow_scale)
+        # update the box marker
 
-    """
-    Internal helpers.
-    """
+        raw_actions_xy_from_env_origin = self.raw_actions[:, :2]
+        # env_origin_xy = self.robot.data.root_pos_w[:, :2]
+        env_origin_xy = self._env.scene.env_origins[:, :2]
+        # print("Origins: ", env_origin_xy)
 
-    def _resolve_xy_velocity_to_arrow(self, xy_velocity: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Converts the XY base velocity command to arrow direction rotation."""
-        # obtain default scale of the marker
-        default_scale = self.base_vel_goal_visualizer.cfg.markers["arrow"].scale
-        # arrow-scale
-        arrow_scale = torch.tensor(default_scale, device=self.device).repeat(xy_velocity.shape[0], 1)
-        arrow_scale[:, 0] *= torch.linalg.norm(xy_velocity, dim=1) * 3.0
-        # arrow-direction
-        heading_angle = torch.atan2(xy_velocity[:, 1], xy_velocity[:, 0])
-        zeros = torch.zeros_like(heading_angle)
-        arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, heading_angle)
-        # convert everything back from base to world frame
-        base_quat_w = self.robot.data.root_quat_w
-        arrow_quat = math_utils.quat_mul(base_quat_w, arrow_quat)
+        new_translations_xy_w = raw_actions_xy_from_env_origin + env_origin_xy
 
-        return arrow_scale, arrow_quat
+        new_translations_w = torch.cat((new_translations_xy_w, self.raw_actions[:, 2].unsqueeze(1)), dim=1)
+
+        self.arrow_goal_visualizer.visualize(
+            translations=new_translations_w,
+            orientations=quat_from_euler_xyz(
+                torch.zeros_like(self.raw_actions[:, 3]),
+                torch.zeros_like(self.raw_actions[:, 3]),
+                self.raw_actions[:, 3],
+            ),
+        )
+
 
 
 @configclass

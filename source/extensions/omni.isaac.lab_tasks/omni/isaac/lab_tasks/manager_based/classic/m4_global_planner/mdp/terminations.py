@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import torch
 from typing import TYPE_CHECKING
+
 from omni.isaac.lab.assets import RigidObject
 from omni.isaac.lab.managers import SceneEntityCfg
 from omni.isaac.lab.utils.math import combine_frame_transforms
@@ -29,8 +30,6 @@ def reversed_robot(
     asset: RigidObject = env.scene[robot_cfg.name]
     
     curr_pos_z_w = asset.data.body_state_w[:, 0, 2] # Accessing base_link z in world frame
-    # print("Gravity: ", asset.data.projected_gravity_b[:, :3])
-
 
     # print("Current Z: ", curr_pos_z_w)
     # print("Elevation: ", curr_pos_z_w < 0.20)
@@ -48,17 +47,6 @@ def reached_goal(env: ManagerBasedRLEnv, threshold: float, command_name: str) ->
     # print("Error: ", error < threshold)
 
     return error < threshold
-
-def take_off(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")
-) -> torch.Tensor:
-
-    asset: RigidObject = env.scene[robot_cfg.name]
-    
-    # print(asset.data.projected_gravity_b[:, 2])
-    # print("Take off: ", torch.abs(asset.data.projected_gravity_b[:, 2]) < threshold)
-
-    return torch.abs(asset.data.projected_gravity_b[:, 2]) < threshold
-
     
 def lin_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     
@@ -69,5 +57,13 @@ def lin_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg:
 def ang_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     
     asset: RigidObject = env.scene[robot_cfg.name]
+
+    return torch.abs(asset.data.root_ang_vel_b[:, 2]) > threshold
+
+def elevation_target_out_of_range(env: ManagerBasedRLEnv, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+    asset: RigidObject = env.scene[robot_cfg.name]
+
+
 
     return torch.abs(asset.data.root_ang_vel_b[:, 2]) > threshold
