@@ -51,10 +51,10 @@ class CommandsCfg:
 
     pose_command = mdp.UniformPose2dCommandCfg(
         asset_name="robot",
-        simple_heading=False,
-        resampling_time_range=(25.0, 25.0),
+        simple_heading=True,
+        resampling_time_range=(30.0, 30.0),
         debug_vis=True,
-        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-5.0, 5.0), pos_y=(-5.0, 5.0), heading=(-math.pi, math.pi)),
+        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-3.5, 3.5), pos_y=(-3.5, 3.5), heading=(-math.pi, math.pi)),
     )
 
 
@@ -62,8 +62,6 @@ class CommandsCfg:
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*hip_joint", ".*leg_joint"], scale=1.0, use_default_offset=True)
-    # joint_vel = mdp.JointVelocityActionCfg(asset_name="robot", joint_names=[".*"], scale=5.0, use_default_offset=False, debug_vis=True)
     pre_trained_policy_action_2: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
         asset_name="robot",
         policy_path=f"/home/m4/IsaacLab/logs/rsl_rl/m4_local_planner/local_planner11/exported/policy.pt",
@@ -81,7 +79,10 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        root_pose_w = ObsTerm(func=mdp.root_pos_w, noise=Unoise(n_min=-0.01, n_max=0.01))
+        # root_pos_w = ObsTerm(func=mdp.root_pos_w, noise=Unoise(n_min=-0.01, n_max=0.01))
+        # root_quat_w = ObsTerm(func=mdp.root_quat_w, noise=Unoise(n_min=-0.01, n_max=0.01))
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.01, n_max=0.01))
         pose_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
         actions = ObsTerm(func=mdp.last_action)
 
@@ -134,28 +135,56 @@ class RewardsCfg:
 
     # -- task
     position_tracking = RewTerm(
-        func=mdp.position_command_error_m4,
-        weight=-0.5,
+        func=mdp.position_command_error_exp,
+        weight=0.5,
         params={"std": 2.0, "command_name": "pose_command"},
     )
     position_tracking_fine_grained = RewTerm(
-        func=mdp.position_command_error_m4,
-        weight=-0.5,
-        params={"std": 0.2, "command_name": "pose_command"},
+        func=mdp.position_command_error_exp,
+        weight=0.5,
+        params={"std": 1.0, "command_name": "pose_command"},
     )
     orientation_tracking = RewTerm(
-        func=mdp.heading_command_error_m4,
-        weight=-0.2,
-        params={"command_name": "pose_command"},
+        func=mdp.heading_command_error_exp,
+        weight=0.05,
+        params={"std": 2.0, "command_name": "pose_command"},
     )
 
-    local_planner_action_proximity = RewTerm(
-        func=mdp.local_planner_action_proximity,
+    # local_planner_action_forward = RewTerm(
+    #     func=mdp.local_planner_action_forward_log,
+    #     weight=10.0,
+    #     params={"threshold": math.pi/4}
+    # )
+
+    # local_planner_action_proximity = RewTerm(
+    #     func=mdp.local_planner_action_proximity_log,
+    #     weight=2.0,
+    #     params={"threshold": 0.5}
+    # )
+
+    move_forward = RewTerm(
+        func=mdp.move_forward,
         weight=1.0,
-        params={"threshold": 0.3},
+        params={"std": 0.1}
     )
+
+    # action_rate = RewTerm(
+    #     func=mdp.action_rate_l2,
+    #     weight=-1.0,
+    # )
 
     # termination_penalty = RewTerm(func=mdp.is_terminated, weight=-400.0)
+    reversed_robot_termination = RewTerm(
+        func=mdp.is_terminated_term,
+        weight=-400.0,
+        params={"term_keys": "reversed_robot"},
+    )
+    
+    reached_target_termination = RewTerm(
+        func=mdp.is_terminated_term,
+        weight=100.0,
+        params={"term_keys": "reached_goal"},
+    )
     # energy_consumption = RewTerm(func=mdp.energy_consumption, weight=-1.0)
 
 
@@ -164,13 +193,13 @@ class TerminationsCfg:
     """Termination terms for the MDP."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # reversed_robot = DoneTerm(
-    #     func=mdp.reversed_robot
-    # )
-    # reached_goal = DoneTerm(
-    #     func=mdp.reached_goal,
-    #     params={"threshold": 0.195, "command_name": "pose_command"} # Allowing for delta_x = 0.1, delta_y = 0.1, delta_z = 0.1, delta_heading = 0.09 (5 degrees error) gives a norm of 0.195
-    # )
+    reversed_robot = DoneTerm(
+        func=mdp.reversed_robot
+    )
+    reached_goal = DoneTerm(
+        func=mdp.reached_goal,
+        params={"threshold": 0.6755, "command_name": "pose_command"} # Allowing for delta_x = 0.3, delta_y = 0.3, delta_z = 0.02, delta_heading = 0.525 (30 degrees error) gives a norm of 0.6755
+    )
     # obstacle_contact = DoneTerm(
     #     func=mdp.obstacle_contact
     # )
@@ -181,6 +210,14 @@ class TerminationsCfg:
     # ang_speed_limit_reached = DoneTerm(
     #     func=mdp.ang_speed_limit_reached,
     #     params={"threshold": 0.3}
+    # )
+    # local_planner_action_forward = DoneTerm(
+    #     func=mdp.local_planner_action_forward_termination,
+    #     params={"threshold": math.pi/4}
+    # )
+    # local_planner_action_proximity = DoneTerm(
+    #     func=mdp.local_planner_action_proximity_termination,
+    #     params={"threshold": 0.5}
     # )
 
 
@@ -216,7 +253,7 @@ class M4GlobalPlannerEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """Post initialization."""
         # general settings
-        self.decimation = LOW_LEVEL_ENV_CFG.decimation * 4 # This implies actions every 1.0 sec (Explained: self.sim.dt [0.005] * self.decimation [4*10*5])
+        self.decimation = LOW_LEVEL_ENV_CFG.decimation * 1 # This implies actions every 1.0 sec (Explained: self.sim.dt [0.005] * self.decimation [4*10*5])
         self.episode_length_s = self.commands.pose_command.resampling_time_range[1]
         # simulation settings
         self.sim.dt = LOW_LEVEL_ENV_CFG.sim.dt

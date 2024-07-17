@@ -14,9 +14,9 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 
 @configclass
 class M4GlobalPlannerPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
+    num_steps_per_env = 150
     max_iterations = 500
-    save_interval = 25
+    save_interval = 10
     experiment_name = "m4_global_planner"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(

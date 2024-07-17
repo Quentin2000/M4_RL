@@ -67,3 +67,31 @@ def elevation_target_out_of_range(env: ManagerBasedRLEnv, robot_cfg: SceneEntity
 
 
     return torch.abs(asset.data.root_ang_vel_b[:, 2]) > threshold
+
+def local_planner_action_forward_termination(env: ManagerBasedRLEnv, threshold: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    raw_actions_xy_b = env.action_manager.get_term("pre_trained_policy_action_2").processed_actions[:, :2] # in robot frame
+
+    # print("local target: ", local_planner_target)
+    # print("current pos: ",  current_pos)
+
+    reward = abs(torch.atan2(raw_actions_xy_b[:, 1], raw_actions_xy_b[:, 0]))  > threshold
+    # print("Reward: ", reward)
+
+    return reward
+
+def local_planner_action_proximity_termination(env: ManagerBasedRLEnv, threshold: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    raw_actions_xy_b = env.action_manager.get_term("pre_trained_policy_action_2").processed_actions[:, :2] # in robot frame
+
+    # print("local target: ", local_planner_target)
+    # print("current pos: ",  current_pos)
+
+    reward = torch.norm(raw_actions_xy_b, dim=1) > threshold
+    # print("Reward: ", reward)
+
+    return reward

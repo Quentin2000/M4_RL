@@ -117,6 +117,7 @@ class UniformPose3dCommand(CommandTerm):
 
     def _update_command(self):
         """Re-target the position command to the current root state."""
+        # print("Goal: ", self.pos_command_w)
         target_vec = self.pos_command_w - self.robot.data.root_pos_w[:, :3]
         self.pos_command_b[:] = quat_rotate_inverse(yaw_quat(self.robot.data.root_quat_w), target_vec)
         self.pos_command_b[:, 2] = self.pos_command_w[:, 2]

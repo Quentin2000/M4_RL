@@ -92,7 +92,7 @@ class UniformPose3dCommand(CommandTerm):
         r = torch.empty(len(env_ids), device=self.device)
         self.pos_command_w[env_ids, 0] += r.uniform_(*self.cfg.ranges.pos_x)
         self.pos_command_w[env_ids, 1] += r.uniform_(*self.cfg.ranges.pos_y)
-        self.pos_command_w[env_ids, 2] += r.uniform_(*self.cfg.ranges.pos_z)
+        self.pos_command_w[env_ids, 2] = r.uniform_(*self.cfg.ranges.pos_z) # We give the elevation command directly in world frame, not an offset from current position
 
         if self.cfg.simple_heading:
             # set heading command to point towards target
@@ -119,6 +119,7 @@ class UniformPose3dCommand(CommandTerm):
         """Re-target the position command to the current root state."""
         target_vec = self.pos_command_w - self.robot.data.root_pos_w[:, :3]
         self.pos_command_b[:] = quat_rotate_inverse(yaw_quat(self.robot.data.root_quat_w), target_vec)
+        self.pos_command_b[:, 2] = self.pos_command_w[:, 2]
         self.heading_command_b[:] = wrap_to_pi(self.heading_command_w - self.robot.data.heading_w)
 
     def _set_debug_vis_impl(self, debug_vis: bool):

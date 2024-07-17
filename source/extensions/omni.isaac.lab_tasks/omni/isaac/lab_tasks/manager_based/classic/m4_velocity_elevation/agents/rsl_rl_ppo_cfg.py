@@ -14,7 +14,7 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 
 @configclass
 class M4VelocityElevationPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
+    num_steps_per_env = 250
     max_iterations = 2000
     save_interval = 50
     experiment_name = "m4_velocity_elevation"

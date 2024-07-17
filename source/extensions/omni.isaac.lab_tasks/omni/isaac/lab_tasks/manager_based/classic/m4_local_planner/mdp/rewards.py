@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from omni.isaac.lab.assets import RigidObject
 from omni.isaac.lab.managers import SceneEntityCfg
 from omni.isaac.lab.sensors import ContactSensor
-from omni.isaac.lab.utils.math import quat_rotate_inverse, yaw_quat, combine_frame_transforms, quat_error_magnitude, quat_mul
+from omni.isaac.lab.utils.math import quat_rotate_inverse, yaw_quat, combine_frame_transforms, quat_error_magnitude, quat_mul, wrap_to_pi
 
 if TYPE_CHECKING:
     from omni.isaac.lab.envs import ManagerBasedRLEnv
@@ -60,33 +60,58 @@ def position_command_error_tanh(env: ManagerBasedRLEnv, std: float, command_name
     distance = torch.norm(des_pos_b, dim=1)
     return 1 - torch.tanh(distance / std)
 
-def position_command_error_m4(env: ManagerBasedRLEnv, std: float, command_name: str) -> torch.Tensor:
-    """Reward position tracking with tanh kernel."""
+def position_command_error_m4(env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+    asset: RigidObject = env.scene[asset_cfg.name]
+    
     command = env.command_manager.get_command(command_name)
     # print("Command: ", command)
-    des_pos_b = command[:, :2]
-    distance = torch.square(torch.norm(des_pos_b, dim=1))
+
+    distance = command[:, :2]
+
+    # target_vec = command[:, :3] - asset.data.root_pos_w[:, :3]
+    # des_pos_b = quat_rotate_inverse(yaw_quat(asset.data.root_quat_w), target_vec)
+    # distance = des_pos_b[:, :2]
+
+    distance = torch.square(torch.norm(distance, dim=1))
+
+    # print("Distance: ", distance)
+
     return distance / std
 
-def lin_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def heading_command_error_m4(env: ManagerBasedRLEnv, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     
-    asset: RigidObject = env.scene[robot_cfg.name]
-
-    mask = torch.abs(asset.data.root_lin_vel_b[:, 0]) > threshold
-
-    reward = mask.float
-
-    return reward
-
-def ang_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    asset: RigidObject = env.scene[asset_cfg.name]
+    """Penalize tracking orientation error."""
+    command = env.command_manager.get_command(command_name)
     
-    asset: RigidObject = env.scene[robot_cfg.name]
+    # heading_b = wrap_to_pi(command[:, 3] - asset.data.heading_w)
+    heading_b = command[:, 3]
+    # print("Heading: ", heading_b)
 
-    mask = torch.abs(asset.data.root_ang_vel_b[:, 2]) > threshold
+    reward = torch.square(heading_b)
 
-    reward = mask.float
+    return reward / std
 
-    return reward
+# def lin_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+#     asset: RigidObject = env.scene[robot_cfg.name]
+
+#     mask = torch.abs(asset.data.root_lin_vel_b[:, 0]) > threshold
+
+#     reward = mask.float * torch.square(abs(asset.data.root_lin_vel_b[:, 0]) - threshold)
+
+#     return reward
+
+# def ang_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+#     asset: RigidObject = env.scene[robot_cfg.name]
+
+#     mask = torch.abs(asset.data.root_ang_vel_b[:, 2]) > threshold
+
+#     reward = mask.float * torch.square(abs(asset.data.root_ang_vel_b[:, 2]) - threshold)
+
+#     return reward
 
 def ang_speed_limit_reached_log(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     
@@ -156,11 +181,3 @@ def heading_command_error_abs(env: ManagerBasedRLEnv, command_name: str) -> torc
     command = env.command_manager.get_command(command_name)
     heading_b = command[:, 3]
     return heading_b.abs()
-
-def heading_command_error_m4(env: ManagerBasedRLEnv, std: float, command_name: str) -> torch.Tensor:
-    """Penalize tracking orientation error."""
-    command = env.command_manager.get_command(command_name)
-    heading_b = command[:, 3]
-
-    reward = torch.square(heading_b)
-    return reward / std

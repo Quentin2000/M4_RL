@@ -300,6 +300,8 @@ class ActionManager(ManagerBase):
             raise ValueError(f"Invalid action shape, expected: {self.total_action_dim}, received: {action.shape[1]}.")
         # store the input actions
         self._prev_action[:] = self._action
+        # print("self._action: ", self._action)
+        # print("action.to(self.device): ", action.to(self.device))
         self._action[:] = action.to(self.device)
 
         # split the actions and apply to each tensor

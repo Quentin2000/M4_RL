@@ -8,6 +8,7 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import wandb
 
 from omni.isaac.lab.app import AppLauncher
 
@@ -27,6 +28,19 @@ parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
 )
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
+# parser.add_argument(
+#     "--logger", type=str, default=None, choices={"wandb", "tensorboard", "neptune"}, help="Logger module to use."
+# )
+# parser.add_argument(
+#     "--log_project_name", type=str, default=None, help="Name of the logging project when using wandb or neptune."
+# )
+parser.add_argument("--wandb_project_name", type=str, default="delfosse-rl",
+    help="the wandb's project name")
+parser.add_argument("--wandb_entity", type=str, default="cnn",
+    help="the entity (team) of wandb's project")
+parser.add_argument("--track", type=bool, default=False, nargs="?", const=True,
+    help="if toggled, this experiment will be tracked with Weights and Biases")
+
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -80,6 +94,13 @@ def main():
     # logging directory path: <train_dir>/<full_experiment_name>
     agent_cfg["params"]["config"]["train_dir"] = log_root_path
     agent_cfg["params"]["config"]["full_experiment_name"] = log_dir
+
+    # initialize wandb
+    # if args_cli.track:
+        # wandb.login()
+        # wandb.init(project=args_cli.wandb_project_name, entity=args_cli.wandb_entity)
+        # print("BBBBBB")
+        # wandb.config.update(agent_cfg)
 
     # multi-gpu training config
     if args_cli.distributed:
@@ -139,7 +160,18 @@ def main():
     # reset the agent and env
     runner.reset()
     # train the agent
-    runner.run({"train": True, "play": False, "sigma": None})
+        # train the agent
+    while True:
+        runner.run({"train": True, "play": False, "sigma": None})
+        
+        # log metrics to wandb
+        # if args_cli.track:
+        #     wandb.log({
+        #         "epoch": runner.epoch_num,
+        #         "mean_reward": runner.mean_reward,
+        #         "mean_loss": runner.mean_loss,
+        #         # add other metrics as necessary
+        #     })
 
     # close the simulator
     env.close()

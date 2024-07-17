@@ -57,7 +57,7 @@ class CommandsCfg:
         simple_heading=False,
         resampling_time_range=(25.0, 25.0),
         debug_vis=True,
-        ranges=mdp.UniformPose3dCommandCfg.Ranges(pos_x=(-0.5, 0.5), pos_y=(-0.5, 0.5), pos_z=(0.25, 0.32), heading=(-math.pi, math.pi))
+        ranges=mdp.UniformPose3dCommandCfg.Ranges(pos_x=(5.0, 5.5), pos_y=(0.0, 0.0), pos_z=(0.25, 0.32), heading=(-math.pi, math.pi))
     )
     
     # z_command = mdp.UniformPoseCommandCfg(
@@ -93,6 +93,7 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
+        # base_pose = ObsTerm(func=mdp.root_pos_w, noise=Unoise(n_min=-0.01, n_max=0.01))
         base_pose_z = ObsTerm(func=mdp.base_pos_z, noise=Unoise(n_min=-0.01, n_max=0.01))
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.01, n_max=0.01))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.02, n_max=0.02))
@@ -158,7 +159,7 @@ class RewardsCfg:
     )
     orientation_tracking = RewTerm(
         func=mdp.heading_command_error_m4,
-        weight=-0.2,
+        weight=-0.5,
         params={"std": 1.0, "command_name": "pose_command"},
     )
 
@@ -177,16 +178,16 @@ class RewardsCfg:
     #     weight=-1.0,
     #     params={"threshold": 0.6}
     # )
-    lin_speed_limit_reached_log = RewTerm(
-        func=mdp.lin_speed_limit_reached_log,
-        weight=0.01,
-        params={"threshold": 0.5}
-    )
-    ang_speed_limit_reached_log = RewTerm(
-        func=mdp.ang_speed_limit_reached_log,
-        weight=0.01,
-        params={"threshold": 0.6}
-    )
+    # lin_speed_limit_reached = RewTerm(
+    #     func=mdp.lin_speed_limit_reached_log,
+    #     weight=10.00,
+    #     params={"threshold": 0.5}
+    # )
+    # ang_speed_limit_reached = RewTerm(
+    #     func=mdp.ang_speed_limit_reached_log,
+    #     weight=10.00,
+    #     params={"threshold": 0.6}
+    # )
 
     # termination_penalty = RewTerm(func=mdp.is_terminated, weight=-400.0)
 

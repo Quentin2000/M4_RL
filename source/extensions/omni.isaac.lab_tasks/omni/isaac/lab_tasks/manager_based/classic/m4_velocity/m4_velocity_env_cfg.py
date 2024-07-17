@@ -19,7 +19,7 @@ from omni.isaac.lab.managers import RewardTermCfg as RewTerm
 from omni.isaac.lab.managers import SceneEntityCfg
 from omni.isaac.lab.managers import TerminationTermCfg as DoneTerm
 from omni.isaac.lab.scene import InteractiveSceneCfg
-from omni.isaac.lab.sensors import ContactSensorCfg, RayCasterCfg, patterns
+from omni.isaac.lab.sensors import ContactSensorCfg, RayCasterCfg, CameraCfg, patterns
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
@@ -135,9 +135,17 @@ class MySceneCfg(InteractiveSceneCfg):
         },
     )
     # sensors
-    # height_scanner dFalse,
-    #     mesh_prim_paths=["/World/ground"],
+    # front_cam: CameraCfg = CameraCfg(
+    #     prim_path="{ENV_REGEX_NS}/Robot/front_camera",
+    #     offset=CameraCfg.OffsetCfg(pos=(0.24099, 0.0, 0.0), rot=(0.5, -0.5, 0.5, -0.5), convention="ros"),
+    #     data_types=["depth"],
+    #     spawn=sim_utils.PinholeCameraCfg(
+    #         focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 6.0)
+    #     ),
+    #     width=80,
+    #     height=80,
     # )
+
     # contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
     # lights
     sky_light = AssetBaseCfg(

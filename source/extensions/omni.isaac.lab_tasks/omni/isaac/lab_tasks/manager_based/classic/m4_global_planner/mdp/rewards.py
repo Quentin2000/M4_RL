@@ -26,9 +26,10 @@ def apply_actions(
     asset: RigidObject = env.scene[asset_cfg.name]
     # height_command = env.command_manager.get_command(command_name)[:, 2]
     height_command = env.action_manager.get_term("pre_trained_policy_action_2").processed_actions[:, 2]
-    # lp_actions = env.action_manager.get_term("pre_trained_policy_action_2").processed_actions
-    # print("LP Actions: ", lp_actions)
-
+    lp_actions_raw = env.action_manager.get_term("pre_trained_policy_action_2").raw_actions
+    lp_actions_processed = env.action_manager.get_term("pre_trained_policy_action_2").processed_actions
+    # print("LP Actions Raw: ", lp_actions_raw)
+    # print("LP Actions Processed: ", lp_actions_processed)
     # print("Height command 1:", height_command)
 
     height_command = torch.clamp(height_command, min=0.25, max=0.32)
@@ -115,25 +116,55 @@ def position_command_error_m4(env: ManagerBasedRLEnv, std: float, command_name: 
     distance = torch.square(torch.norm(des_pos_b, dim=1))
     return distance / std
 
-def lin_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    
-    asset: RigidObject = env.scene[robot_cfg.name]
-
-    mask = torch.abs(asset.data.root_lin_vel_b[:, 0]) > threshold
-
-    reward = mask.float
-
+def position_command_error_exp(env: ManagerBasedRLEnv, std: float, command_name: str) -> torch.Tensor:
+    """Reward position tracking with tanh kernel."""
+    command = env.command_manager.get_command(command_name)
+    # print("Command: ", command)
+    des_pos_b = command[:, :2]
+    reward = 1-torch.exp(torch.norm(des_pos_b, dim=1)/std)
     return reward
 
-def ang_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
-    
-    asset: RigidObject = env.scene[robot_cfg.name]
+def heading_command_error_abs(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """Penalize tracking orientation error."""
+    command = env.command_manager.get_command(command_name)
+    heading_b = command[:, 3]
+    return heading_b.abs()
 
-    mask = torch.abs(asset.data.root_ang_vel_b[:, 2]) > threshold
+def heading_command_error_m4(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
+    """Penalize tracking orientation error."""
+    command = env.command_manager.get_command(command_name)
+    heading_b = command[:, 3]
 
-    reward = mask.float
-
+    reward = torch.square(heading_b)
     return reward
+
+def heading_command_error_exp(env: ManagerBasedRLEnv, std: float, command_name: str) -> torch.Tensor:
+    """Reward position tracking with tanh kernel."""
+    command = env.command_manager.get_command(command_name)
+    # print("Command: ", command)
+    heading_b = command[:, 3]
+    reward = 1-torch.exp(abs(heading_b)/std)
+    return reward
+
+# def lin_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+#     asset: RigidObject = env.scene[robot_cfg.name]
+
+#     mask = torch.abs(asset.data.root_lin_vel_b[:, 0]) > threshold
+
+#     reward = mask.float
+
+#     return reward
+
+# def ang_speed_limit_reached(env: ManagerBasedRLEnv, threshold: float, robot_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+#     asset: RigidObject = env.scene[robot_cfg.name]
+
+#     mask = torch.abs(asset.data.root_ang_vel_b[:, 2]) > threshold
+
+#     reward = mask.float
+
+#     return reward
 
 def distance_from_geodesic(env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     
@@ -169,21 +200,7 @@ def distance_from_geodesic(env: ManagerBasedRLEnv, command_name: str, asset_cfg:
     
     return distance
 
-def heading_command_error_abs(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
-    """Penalize tracking orientation error."""
-    command = env.command_manager.get_command(command_name)
-    heading_b = command[:, 3]
-    return heading_b.abs()
-
-def heading_command_error_m4(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
-    """Penalize tracking orientation error."""
-    command = env.command_manager.get_command(command_name)
-    heading_b = command[:, 3]
-
-    reward = torch.square(heading_b)
-    return reward
-
-def local_planner_action_proximity(env: ManagerBasedRLEnv, threshold: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def local_planner_action_proximity_log(env: ManagerBasedRLEnv, threshold: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     
     asset: RigidObject = env.scene[asset_cfg.name]
 
@@ -192,12 +209,80 @@ def local_planner_action_proximity(env: ManagerBasedRLEnv, threshold: float, ass
     # print("local target: ", local_planner_target)
     # print("current pos: ",  current_pos)
 
-    distance_to_max_dist = threshold - torch.norm(local_planner_target, dim=1)
+    action_norm = torch.norm(local_planner_target, dim=1)
+
+    reward = torch.where(action_norm <= threshold, 0, 1-torch.exp(action_norm - threshold))
+
+    # print("Error: ", action_norm - threshold)
+    # print("Reward: ", reward)
+
+    # relu = torch.nn.ReLU()
+    # distance_to_max_dist_positive = relu(distance_to_max_dist)
+    
+    # epsilon = 1e-10
+    # reward = torch.log(distance_to_max_dist_positive + epsilon)
+
+    return reward
+
+def move_forward(env: ManagerBasedRLEnv, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    reward = 1 - torch.exp(-asset.data.root_lin_vel_b[:, 0] / std)
+
+    return reward
+
+def local_planner_action_forward_log(env: ManagerBasedRLEnv, threshold: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    local_planner_target = env.action_manager.get_term("pre_trained_policy_action_2").processed_actions[:, :2] # in robot frame
+
+    # print("local target: ", local_planner_target)
+    # print("current pos: ",  current_pos)
+
+    
+
+    distance_to_max_angle = threshold - torch.atan2(local_planner_target[:, 1], local_planner_target[:, 0])
 
     relu = torch.nn.ReLU()
-    distance_to_max_dist_positive = relu(distance_to_max_dist)
+    distance_to_max_angle_positive = relu(distance_to_max_angle)
     
     epsilon = 1e-10
-    reward = torch.log(distance_to_max_dist_positive + epsilon)
+    reward = torch.log(distance_to_max_angle_positive + epsilon)
+
+    return reward
+
+def local_planner_action_forward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    raw_actions_xy_b = env.action_manager.get_term("pre_trained_policy_action_2").processed_actions[:, :2] # in robot frame
+
+    # print("local target: ", local_planner_target)
+    # print("current pos: ",  current_pos)
+
+    reward = torch.square(torch.atan2(raw_actions_xy_b[:, 1], raw_actions_xy_b[:, 0]))
+
+    # print("Forward: ", torch.atan2(raw_actions_xy_b[:, 1], raw_actions_xy_b[:, 0]))
+    # print("Forward: ",  abs(torch.atan2(raw_actions_xy_b[:, 1], raw_actions_xy_b[:, 0])) < math.pi/4)
+    # print("Reward: ", reward)
+
+    return reward
+
+def local_planner_action_proximity(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    raw_actions_xy_b = env.action_manager.get_term("pre_trained_policy_action_2").processed_actions[:, :2] # in robot frame
+
+    # print("local target: ", local_planner_target)
+    # print("current pos: ",  current_pos)
+
+    reward = torch.square(torch.norm(raw_actions_xy_b, dim=1))
+    # print("Prox: ", torch.norm(raw_actions_xy_b, dim=1))
+    # print("Prox: ", torch.norm(raw_actions_xy_b, dim=1) < 0.5)
+    
+    # print("Reward: ", reward)
 
     return reward

@@ -205,6 +205,7 @@ class ObservationManager(ManagerBase):
             group_cfg_items = self.cfg.items()
         else:
             group_cfg_items = self.cfg.__dict__.items()
+
         # iterate over all the groups
         for group_name, group_cfg in group_cfg_items:
             # check for non config

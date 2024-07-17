@@ -71,6 +71,20 @@ def diff_wheels(
 
     return reward
 
+def track_elevation(
+    env: ManagerBasedRLEnv, elevation_command: str, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+
+    asset: RigidObject = env.scene[asset_cfg.name]
+
+    current_elevation = asset.data.root_pos_w[:, 2]
+    target_elevation = env.command_manager.get_command(elevation_command)[:, 0]
+
+    reward = torch.square((current_elevation-target_elevation)/std)
+
+    return reward
+
+
 def balanced_hips(
     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
