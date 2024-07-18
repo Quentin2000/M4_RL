@@ -16,6 +16,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from torchvision.models import resnet18
 from collections.abc import Sequence
+from PIL import Image
 
 
 import omni.isaac.lab.sim as sim_utils
@@ -41,7 +42,7 @@ class M4ElevationCnnEnvCfg(DirectRLEnvCfg):
 
     # env
     decimation = 10
-    episode_length_s = 20.0
+    episode_length_s = 40.0
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -84,7 +85,7 @@ class M4ElevationCnnEnvCfg(DirectRLEnvCfg):
             ),
         ),
         init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0, 0.0, 0.40), 
+            pos=(0.0, 0.0, 1.40), 
             joint_pos={
                 ".*hip_joint": 0.0,
                 # ".*leg_joint": 0.0,
@@ -92,10 +93,7 @@ class M4ElevationCnnEnvCfg(DirectRLEnvCfg):
             },
             joint_vel={
                 ".*hip_joint": 0.0,
-                # "rear_right_wheel_joint": 0.0,
-                # "rear_left_wheel_joint": 5.0,
-                # "front_right_wheel_joint": 10.0,
-                # "front_left_wheel_joint": 15.0,
+                # ".*leg_joint": 0.0,
                 ".*wheel_joint": 3.0,
             },
         ),
@@ -109,10 +107,10 @@ class M4ElevationCnnEnvCfg(DirectRLEnvCfg):
             ),
             # "leg_motors": ImplicitActuatorCfg(
             #     joint_names_expr=[".*leg_joint"],
-            #     effort_limit=80.0,
-            #     velocity_limit=2.0,
-            #     stiffness= 80.0,
-            #     damping= 4.0,
+            #     effort_limit=100000.0,
+            #     velocity_limit=4.0,
+            #     stiffness= 8.0,
+            #     damping= 0.0,
             # ),
             "wheel_motors": ImplicitActuatorCfg(
                 joint_names_expr=[".*wheel_joint"],
@@ -142,18 +140,6 @@ class M4ElevationCnnEnvCfg(DirectRLEnvCfg):
         # ),
     )
 
-    # camera = TiledCameraCfg(
-    #     prim_path="/World/envs/env_.*/Robot/base_link/camera",
-    #     update_period=0.1,
-    #     height=72,
-    #     width=128,
-    #     data_types=["depth"],
-    #     spawn=sim_utils.PinholeCameraCfg(
-    #         focal_length=0.193, focus_distance=0.6, horizontal_aperture=1.0
-    #         # focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 20.0)
-    #     ),
-    #     offset=TiledCameraCfg.OffsetCfg(pos=(0.24099, 0.0, 0.0), rot=(0.5, -0.5, 0.5, -0.5), convention="ros"),
-    # )
     # See: https://www.intelrealsense.com/wp-content/uploads/2020/06/Intel-RealSense-D400-Series-Datasheet-June-2020.pdf
     camera2 = CameraCfg(
         prim_path="/World/envs/env_.*/Robot/base_link/camera2",
@@ -181,19 +167,32 @@ class M4ElevationCnnEnvCfg(DirectRLEnvCfg):
     contact_forces = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*", 
         history_length=3, 
-        track_air_time=False)
+        track_air_time=True)
 
     # change viewer settings
     viewer = ViewerCfg(eye=(2.0, 2.0, 5.0))
 
+    # Env & architecture parameters
+    dual_camera = True
+    resnet18 = True #### FORGET TO REMOVE CNN LAYERS FROM rl_games_ppo_cfg.yaml
+
     # actions
     action_scale = 1  # [N]
-    num_actions = 4
+    num_actions = 4 # DON"T FORGET TO CHANGE ROBOT CFG (4 hip + 4 leg joints)
 
     # observations
-    num_channels = 2
-    # num_observations = num_channels * camera.height * camera.width
-    num_observations = num_channels * camera2.height * camera2.width
+    if resnet18:
+        if dual_camera:
+            num_channels = 2
+        else:
+            num_channels = 1
+        num_observations = num_channels * 512 # output of the Resnet18 pipeline
+    else:
+        if dual_camera:
+            num_channels = 2
+        else:
+            num_channels = 1
+        num_observations = num_channels * camera2.height * camera2.width
     num_states = 0
 
     # scene
@@ -220,33 +219,42 @@ class M4ElevationCnnEnv(DirectRLEnv):
     ):
         super().__init__(cfg, render_mode, **kwargs)
 
-        torch.set_printoptions(threshold=10000)
+        # torch.set_printoptions(threshold=10000)
 
-        # Load the pretrained ResNet-18 model
-        self.resnet18_model = resnet18(pretrained=True)
-        # Remove the final classification layer to get feature extraction layer
-        resnet18_model = nn.Sequential(*list(resnet18_model.children())[:-1])
-        resnet18_model.eval()
+        if self.resnet18:
+            # Load the pretrained ResNet-18 model
+            self.resnet18_model = resnet18(pretrained=True)
+            # Remove the final classification layer to get feature extraction layer
+            self.resnet18_model = nn.Sequential(*list(self.resnet18_model.children())[:-1])
+            self.resnet18_model = self.resnet18_model.to(self.sim.device)
+            self.resnet18_model.eval()
 
-        # Define the preprocessing transformations
-        self.preprocess = transforms.Compose([
-            transforms.ToPILImage(),  # Convert to PIL Image
-            transforms.Resize(224),   # Resize to 224x224
-            transforms.ToTensor(),    # Convert to tensor
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize
-        ])
+            # Define the preprocessing transformations
+            self.preprocess = transforms.Compose([
+                transforms.ToPILImage(),  # Convert to PIL Image
+                transforms.Resize(224),   # Resize to 224x224
+                transforms.ToTensor(),    # Convert to tensor
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize
+            ])
         
         m4_base_body_idx_list, _ = self._m4_robot.find_bodies(".*base_link")
         m4_hip_body_idx_list, _ = self._m4_robot.find_bodies(".*hip")
+        m4_wheel_body_idx_list, _ = self._m4_robot.find_bodies(".*wheel")
         m4_leg_body_idx_list, _ = self._m4_robot.find_bodies(".*leg")
         self._m4_base_body_idx = torch.tensor(m4_base_body_idx_list)
         self._m4_hip_body_idx = torch.tensor(m4_hip_body_idx_list)
-        self._m4_leg_body_idx = torch.tensor(m4_leg_body_idx_list)
+        self._m4_wheel_body_idx = torch.tensor(m4_wheel_body_idx_list)
+        self._m4_leg_body_idx = torch.tensor(m4_leg_body_idx_list)   
 
         self._m4_hip_idx_list, _ = self._m4_robot.find_joints(".*hip_joint")
         self._m4_hip_idx = torch.tensor(self._m4_hip_idx_list)
-        self._m4_wheel_idx, _ = self._m4_robot.find_joints(".*wheel_joint")
-        # self._pole_dof_idx, _ = self._cartpole.find_joints(self.cfg.pole_dof_name)
+        self._m4_wheel_idx_list, _ = self._m4_robot.find_joints(".*wheel_joint")
+        self._m4_wheel_idx = torch.tensor(self._m4_wheel_idx_list) 
+
+        if self.num_actions == 8: 
+            self._m4_leg_idx_list, _ = self._m4_robot.find_joints(".*leg_joint")
+            self._m4_leg_idx = torch.tensor(self._m4_leg_idx_list)
+        
         self.action_scale = self.cfg.action_scale
 
         self.joint_pos = self._m4_robot.data.joint_pos
@@ -256,7 +264,7 @@ class M4ElevationCnnEnv(DirectRLEnv):
         self.projected_gravity_b = self._m4_robot.data.projected_gravity_b
         self.contacts = self._contact_forces.data.net_forces_w_history
 
-        self.grid_dim = 7 # Number of rows or columns in the map, given that the map is a square
+        self.grid_dim = 5 # Number of rows or columns in the map, given that the map is a square
         self.grid_size = 5 # Size of the side of a grid in meters
         self.grid_centers = []
 
@@ -304,31 +312,36 @@ class M4ElevationCnnEnv(DirectRLEnv):
         self.num_actions = self.cfg.num_actions
         self.num_observations = self.cfg.num_observations
         self.num_states = self.cfg.num_states
+        self.dual_camera = self.cfg.dual_camera
+        self.resnet18 = self.cfg.resnet18
 
         # set up spaces
         self.single_observation_space = gym.spaces.Dict()
-        # self.single_observation_space["policy"] = gym.spaces.Box(
-        #     low=-np.inf,
-        #     high=np.inf,
-        #     shape=(self.cfg.camera.height, self.cfg.camera.width, self.cfg.num_channels),
-        # )
-        self.single_observation_space["policy"] = gym.spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(self.cfg.camera2.height, self.cfg.camera2.width, self.cfg.num_channels),
-        )
-        # if self.num_states > 0:
-        #     self.single_observation_space["critic"] = gym.spaces.Box(
-        #         low=-np.inf,
-        #         high=np.inf,
-        #         shape=(self.cfg.camera.height, self.cfg.camera.width, self.cfg.num_channels),
-        #     )
-        if self.num_states > 0:
-            self.single_observation_space["critic"] = gym.spaces.Box(
+
+        if self.resnet18:
+            self.single_observation_space["policy"] = gym.spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=(1, self.cfg.num_observations),
+            )
+            if self.num_states > 0:
+                self.single_observation_space["critic"] = gym.spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=(1, self.cfg.num_observations),
+                )
+        else:
+            self.single_observation_space["policy"] = gym.spaces.Box(
                 low=-np.inf,
                 high=np.inf,
                 shape=(self.cfg.camera2.height, self.cfg.camera2.width, self.cfg.num_channels),
             )
+            if self.num_states > 0:
+                self.single_observation_space["critic"] = gym.spaces.Box(
+                    low=-np.inf,
+                    high=np.inf,
+                    shape=(self.cfg.camera2.height, self.cfg.camera2.width, self.cfg.num_channels),
+                )
         self.single_action_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_actions,))
 
         # batch the spaces for vectorized environments
@@ -342,43 +355,24 @@ class M4ElevationCnnEnv(DirectRLEnv):
     def _setup_scene(self):
         """Setup the scene with the cartpole and camera."""
         self._m4_robot = Articulation(self.cfg.robot_cfg)
-        # self._camera = TiledCamera(self.cfg.camera)
         self._camera2 = Camera(self.cfg.camera2)
-        self._camera3 = Camera(self.cfg.camera3)
+        if self.cfg.dual_camera:
+            self._camera3 = Camera(self.cfg.camera3)
         self._contact_forces = ContactSensor(self.cfg.contact_forces)
        
        # add ground plane
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
         self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
-        # spawn_ground_plane(prim_path="/World/ground", cfg=self.cfg.terrain)
-        # spawn_ground_plane(
-        #     prim_path="/World/ground", 
-        #     cfg=TerrainImporterCfg(
-        #         prim_path="/World/ground",
-        #         num_envs=2048,
-        #         env_spacing=3.0,
-        #         max_init_terrain_level=5,
-        #         terrain_type="generator",
-        #         # terrain_generator=M4_TERRAINS_CFG.replace(color_scheme="random"),
-        #         terrain_generator=M4_TERRAINS_CFG,
-        #         visual_material=None,
-        #         # visual_material=sim_utils.MdlFileCfg(
-        #         #     mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
-        #         #     project_uvw=True,
-        #         #     texture_scale=(0.25, 0.25),
-        #         # ),
-        #     )
-        # )
         # clone, filter, and replicate
         self.scene.clone_environments(copy_from_source=False)
         self.scene.filter_collisions(global_prim_paths=[])
 
         # add articultion and sensors to scene
         self.scene.articulations["m4_robot"] = self._m4_robot
-        # self.scene.sensors["Camera"] = self._camera
         self.scene.sensors["Camera2"] = self._camera2
-        self.scene.sensors["Camera3"] = self._camera3
+        if self.cfg.dual_camera:
+            self.scene.sensors["Camera3"] = self._camera3
         self.scene.sensors["Contact"] = self._contact_forces
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
@@ -389,71 +383,111 @@ class M4ElevationCnnEnv(DirectRLEnv):
 
     def _apply_action(self) -> None:
         velocity_actions = torch.full((self.num_envs, 4), 3.0,  device=self.sim.device) # Set a wheels joint velocity of 3.0 rad/s to get to 0.3 m/s linear speed (given a 10 cm wheel radius)
-        self._m4_robot.set_joint_velocity_target(velocity_actions, joint_ids=self._m4_wheel_idx)
-        # actions_4_hips = self.actions.repeat(1, 4)
-        # self._m4_robot.set_joint_position_target(torch.clamp(actions_4_hips, min=0, max=1.0), joint_ids=self._m4_hip_idx_list) # 60 degrees is about 1.04 rad ~ 1.0 rad
-        
-        self._m4_robot.set_joint_position_target(torch.clamp(self.actions, min=0, max=1.0), joint_ids=self._m4_hip_idx_list) # 60 degrees is about 1.04 rad ~ 1.0 rad
-        
-
+        self._m4_robot.set_joint_velocity_target(velocity_actions, joint_ids=self._m4_wheel_idx_list)
+        if self.num_actions == 1:
+            actions_4_hips = self.actions.repeat(1, 4)
+            self._m4_robot.set_joint_position_target(torch.clamp(actions_4_hips, min=0, max=1.0), joint_ids=self._m4_hip_idx_list) # 60 degrees is about 1.04 rad ~ 1.0 rad
+        elif self.num_actions == 4:
+            self._m4_robot.set_joint_position_target(torch.clamp(self.actions, min=0, max=1.0), joint_ids=self._m4_hip_idx_list) # 60 degrees is about 1.04 rad ~ 1.0 rad
+        elif self.num_actions == 8:
+            self._m4_robot.set_joint_position_target(torch.clamp(self.actions[:, :4], min=0, max=1.0), joint_ids=self._m4_hip_idx_list)
+            self._m4_robot.set_joint_position_target(torch.clamp(self.actions[:, 4:], min=0, max=1.0), joint_ids=self._m4_leg_idx_list)
+    
     def _get_observations(self) -> dict:
-        # data_type = "depth"
-        data_type2 = "distance_to_camera"
-        # data_type3 = "distance_to_camera"
-        # depth_data = self._camera.data.output[data_type].clone()
-        depth_data2 = self._camera2.data.output[data_type2].clone()
-        # depth_data3 = self._camera3.data.output[data_type3].clone()
-        depth_data2[torch.isinf(depth_data2)] = 6.0
-        # depth_data3[torch.isinf(depth_data3)] = 6.0
-
-        # merged_depth_data = torch.cat([depth_data2.unsqueeze(-1), depth_data3.unsqueeze(-1)], dim=-1)
         
-        if len(depth_data2.shape) == 2:
-            depth_data = np.stack((depth_data2,)*3, axis=-1)
+        if self.resnet18:
 
-        input_tensor = preprocess(depth_data)
-        input_tensor = input_tensor.unsqueeze(0)  # Create a mini-batch as expected by the model
+            data_type2 = "distance_to_camera"
+            depth_data2 = self._camera2.data.output[data_type2].clone()
+            depth_data2[torch.isinf(depth_data2)] = 6.0
 
-        with torch.no_grad():
-            features = self.resnet18_model(input_tensor)
-        features = features.flatten()
+            # Initialize a list to hold preprocessed images
+            preprocessed_images = []
 
-        # if self.save_img:
-        #     depth_data_array = depth_data.cpu().numpy().flatten()
-        #     np.savetxt('depth_tiled.txt', depth_data_array)
-            
-        #     depth_data_array = depth_data2.cpu().numpy().flatten()
-        #     np.savetxt('depth.txt', depth_data_array)
-            
-        #     self.save_img = False
+            # Process each agent's depth image
+            for i in range(depth_data2.shape[0]):
+                # Convert the single-channel depth image to a three-channel image by repeating the single channel
+                depth_image = depth_data2[i].unsqueeze(0).repeat(3, 1, 1)
 
-        # print("Depth Tiled shape: ", depth_data.shape)
-        # print("Depth Camera shape: ", depth_data2.shape)
-        # observations = {"policy": depth_data2}
-        observations = {"policy": features}
+                # Convert the tensor to a NumPy array and then to a PIL image
+                depth_image_np = depth_image.cpu().numpy().transpose(1, 2, 0)  # Convert to [H, W, C] for PIL
+
+                # Apply the preprocessing steps (Rescaling [0.0,1.0], Resize, ToTensor, Normalize)
+                depth_image_np = depth_image_np / 6.0
+                depth_image_tensor = self.preprocess(depth_image_np)
+                preprocessed_images.append(depth_image_tensor)
+
+            # Stack the preprocessed images to form a batch
+            input_tensor = torch.stack(preprocessed_images).to(self.sim.device)
+
+            # Extract features using ResNet-18
+            with torch.no_grad():
+                features = self.resnet18_model(input_tensor)    
+            features = features.view(features.size(0), 1, -1)
+
+            if self.dual_camera:
+
+                preprocessed_images = []
+
+                data_type3 = "distance_to_camera"
+                depth_data3 = self._camera3.data.output[data_type3].clone()
+                depth_data3[torch.isinf(depth_data3)] = 6.0
+
+                # Process each agent's depth image
+                for i in range(depth_data3.shape[0]):
+                    # Convert the single-channel depth image to a three-channel image by repeating the single channel
+                    depth_image = depth_data3[i].unsqueeze(0).repeat(3, 1, 1)
+
+                    # Convert the tensor to a NumPy array and then to a PIL image
+                    depth_image_np = depth_image.cpu().numpy().transpose(1, 2, 0)  # Convert to [H, W, C] for PIL
+
+                    # Apply the preprocessing steps (Rescaling [0.0,1.0], Resize, ToTensor, Normalize)
+                    depth_image_np = depth_image_np / 6.0
+                    depth_image_tensor = self.preprocess(depth_image_np)
+                    preprocessed_images.append(depth_image_tensor)
+
+                # Stack the preprocessed images to form a batch
+                input_tensor = torch.stack(preprocessed_images).to(self.sim.device)
+
+                # Extract features using ResNet-18
+                with torch.no_grad():
+                    features2 = self.resnet18_model(input_tensor)    
+                features2 = features2.view(features2.size(0), 1, -1)
+
+                features = torch.cat([features, features2], dim=-1)
+
+            observations = {"policy": features}
         
-        # Live display
-        # if self.frame_count % 10 == 0:
+        else:
 
-        #     # plt.switch_backend('Qt5Agg')
-        #     plt.clf()
+            data_type2 = "distance_to_camera"
+            depth_data2 = self._camera2.data.output[data_type2].clone()
+            depth_data2[torch.isinf(depth_data2)] = 6.0
+            depth_data2 = depth_data2.unsqueeze(-1)
 
-        #     depth_data_np = depth_data2.cpu().numpy().squeeze()
-        #     max_value = np.nanmax(depth_data_np[np.isfinite(depth_data_np)])
-        #     depth_data_np[depth_data_np == float('inf')] = max_value + 1
+            if self.dual_camera:
+                
+                data_type3 = "distance_to_camera" 
+                depth_data3 = self._camera3.data.output[data_type3].clone()   
+                depth_data3[torch.isinf(depth_data3)] = 6.0
+                depth_data3 = depth_data3.unsqueeze(-1)
+
+                depth_data = torch.cat([depth_data2, depth_data3], dim=-1)
             
-        #     img = plt.imshow(depth_data_np, cmap='gray', interpolation='nearest')
-        #     plt.colorbar()
-        #     filename = os.path.join(output_dir, f'frame_{self.frame_count:03d}.png')
-        #     plt.savefig(filename)
+            else:
+                depth_data = depth_data2.clone()
 
-        #     plt.pause(0.01)
-
-        # self.frame_count += 1
+            observations = {"policy": depth_data}
         
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
+        dt = 0.1
+        first_contact = self._contact_forces.compute_first_contact(dt)[:, self._m4_wheel_body_idx]
+        # print("first_contact: ", first_contact)
+        last_air_time = self._contact_forces.data.last_air_time[:, self._m4_wheel_body_idx]
+        # print("last_air_time: ", last_air_time)
+
         total_reward = compute_rewards(
             self._m4_base_body_idx,
             self._m4_hip_body_idx,
@@ -461,9 +495,12 @@ class M4ElevationCnnEnv(DirectRLEnv):
             self._m4_hip_idx,
             self.joint_pos,
             self.root_lin_vel_b[:, 0],
+            self.root_lin_vel_b[:, 1],
             self.root_pos_w[:, 2],
             self.projected_gravity_b,
             self.contacts,
+            first_contact,
+            last_air_time,
             self.actions,
             self.prev_actions
         )
@@ -476,7 +513,8 @@ class M4ElevationCnnEnv(DirectRLEnv):
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
 
-        out_of_bounds = ((self.root_pos_w[:, 0] > (self.grid_dim*self.grid_size)/2) | (self.root_pos_w[:, 0] < -(self.grid_dim*self.grid_size)/2) | (self.root_pos_w[:, 1] > (self.grid_dim*self.grid_size)/2) | (self.root_pos_w[:, 1] < -(self.grid_dim*self.grid_size)/2))
+        out_of_bounds = ((self.root_pos_w[:, 0] > (self.grid_dim*self.grid_size)/2) | (self.root_pos_w[:, 0] < -(self.grid_dim*self.grid_size)/2) | (self.root_pos_w[:, 1] > (self.grid_dim*self.grid_size)/2) | (self.root_pos_w[:, 1] < -(self.grid_dim*self.grid_size)/2) | (self.root_pos_w[:, 2] < -4))
+
         return out_of_bounds, time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
@@ -543,9 +581,12 @@ def compute_rewards(
     hip_joint_idx: torch.Tensor,
     joint_pos: torch.Tensor,
     root_lin_vel_x: torch.Tensor,
+    root_lin_vel_y: torch.Tensor,
     root_pos_z: torch.Tensor,
     projected_gravity_b: torch.Tensor,
     contacts: torch.Tensor,
+    first_contact: torch.Tensor,
+    last_air_time: torch.Tensor,
     actions: torch.Tensor,
     prev_actions: torch.Tensor
 ):
@@ -553,16 +594,28 @@ def compute_rewards(
     num_envs = root_lin_vel_x.shape[0]
     rew_track_lin_vel_x_m4 = - 500 * torch.square((torch.full((num_envs, 1), 0.3,  device="cuda:0") - root_lin_vel_x.unsqueeze(dim=1))).squeeze(1)
     
+    # Penalizing Vy
+    rew_track_lin_vel_y_m4 = - 500 * torch.square(root_lin_vel_y)
+    
     # Reversed robot
     zero_tensor = torch.zeros_like(projected_gravity_b[:, 0], device="cuda:0")
-    rew_reversed_robot = - 50 * torch.where(projected_gravity_b[:, 2] > 0, - 50 * projected_gravity_b[:, 2], 0)
+    rew_reversed_robot = - 50 * torch.where(projected_gravity_b[:, 2] > 0, projected_gravity_b[:, 2], 0)
     
+    # Wheels on ground
+    # threshold = 0.4
+    # rew_air_time = - 500 * torch.sum(last_air_time * first_contact, dim=1)
+
     # Flat robot
     rew_flat_robot = - 200 * torch.square(torch.norm(projected_gravity_b[:, :2], dim=-1))
 
     # Rolling
-    rew_rolling_not_crawling = - 50 * abs(root_pos_z.unsqueeze(dim=1)-0.32).squeeze(1)
-    
+    # print("root_pos_z: ", root_pos_z)
+    # rew_rolling_not_crawling = - 50 * abs(root_pos_z.unsqueeze(dim=1)-0.32).squeeze(1)
+    hip_joint_pos = joint_pos[:, hip_joint_idx]
+    # print("hip_joint_pos: ", hip_joint_pos)
+    sum_hip_joint_pos = torch.sum(hip_joint_pos, dim=-1)
+    rew_rolling_not_crawling = torch.exp(sum_hip_joint_pos) 
+
     # Contacts
     is_contact_base = (torch.max(torch.norm(contacts[:, :, base_idx], dim=-1), dim=1)[0] > 10).squeeze(1)
     # print("is_contact_base: ", is_contact_base)
@@ -572,11 +625,12 @@ def compute_rewards(
     # is_contact_leg = torch.sum(torch.max(torch.norm(contacts[:, :, leg_idx], dim=-1), dim=1)[0] > 10, dim=-1)
     # print("is_contact_leg.shape: ", is_contact_leg.shape)
     # print("torch.sum(root_pos_z.unsqueeze(dim=1)-0.25, dim=-1): ", torch.sum(root_pos_z.unsqueeze(dim=1)-0.25, dim=-1))
-    min_z_elevation = 0.19
+    # min_z_elevation = 0.19
     # print("root_pos_z-min_z_elevation: ", root_pos_z-min_z_elevation)
     # print("root_pos_z-min_z_elevation.shape: ", (root_pos_z-min_z_elevation).shape)
     # print("is_contact_base + is_contact_leg", is_contact_base + is_contact_leg)
-    rew_contact = - 5 * (is_contact_base) * 100 * abs(root_pos_z-min_z_elevation)
+    # rew_contact = - 5 * (is_contact_base) * torch.exp(abs(root_pos_z) / 0.2)
+    rew_contact = - 100 * (is_contact_base) * torch.exp(-sum_hip_joint_pos)
 
     # Action rate
     # rew_action_rate = - 10 * torch.square(actions-prev_actions).squeeze(1)
@@ -591,14 +645,16 @@ def compute_rewards(
     # rew_joint_pos = rew_neg_joint_pos
 
     # print("rew_track_lin_vel_x_m4: ", rew_track_lin_vel_x_m4)
+    # print("rew_track_lin_vel_y_m4: ", rew_track_lin_vel_y_m4)
     # print("rew_flat_robot: ", rew_flat_robot)
     # print("rew_reversed_robot: ", rew_reversed_robot)
     # print("rew_rolling_not_crawling: ", rew_rolling_not_crawling)
     # print("rew_contact: ", rew_contact)
     # print("rew_action_rate: ", rew_action_rate)
     # print("rew_joint_pos: ", rew_joint_pos)
+    # print("rew_air_time: ", rew_air_time)
 
-    total_reward = (rew_track_lin_vel_x_m4 + rew_reversed_robot + rew_flat_robot + rew_rolling_not_crawling + rew_contact)
+    total_reward = (rew_track_lin_vel_x_m4 + rew_track_lin_vel_y_m4 + rew_reversed_robot + rew_flat_robot + rew_rolling_not_crawling + rew_contact)
     # print("total_reward: ", total_reward)
     print("mean_reward: ", torch.mean(total_reward))
 

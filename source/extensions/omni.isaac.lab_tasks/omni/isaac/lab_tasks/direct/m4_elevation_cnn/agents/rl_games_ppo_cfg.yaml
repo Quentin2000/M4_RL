@@ -58,7 +58,7 @@ params:
     #       strides: 1
     #       padding: 0
     mlp:
-      units: [128]
+      units: [128, 64]
       activation: elu
       # d2rl: False
 
@@ -99,7 +99,7 @@ params:
     truncate_grads: True
     e_clip: 0.2
     horizon_length: 200
-    minibatch_size: 16
+    minibatch_size: 4
     mini_epochs: 4
     critic_coef: 2
     clip_value: True
