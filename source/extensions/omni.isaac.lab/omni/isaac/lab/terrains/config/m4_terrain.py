@@ -36,9 +36,9 @@ M4_TERRAINS_CFG = TerrainGeneratorCfg(
         #     slope_threshold=1.5,
         # ),
         # "gap": terrain_gen.MeshGapTerrainCfg(
-        #     proportion=0.1,
+        #     proportion=0.2,
         #     gap_width_range=[0.20, 0.30],
-        #     platform_width=3.0,
+        #     platform_width=2.0,
         # ),
         "pit": terrain_gen.MeshPitTerrainCfg(
             proportion=0.20,
@@ -46,32 +46,44 @@ M4_TERRAINS_CFG = TerrainGeneratorCfg(
             platform_width=3.0,
             double_pit=False,
         ),
+        # "pit": terrain_gen.MeshPitTerrainCfg(
+        #     proportion=0.1,
+        #     pit_depth_range=[0.1, 0.2],
+        #     platform_width=2.0,
+        #     double_pit=True,
+        # ),
+        # "pit": terrain_gen.MeshPitTerrainCfg(
+        #     proportion=0.1,
+        #     pit_depth_range=[-0.2, -0.1],
+        #     platform_width=2.0,
+        #     double_pit=True,
+        # ),
         "ring": terrain_gen.MeshFloatingRingTerrainCfg(
-            proportion=0.40,
-            ring_width_range=[0.2, 1.0],
-            ring_height_range=[0.27, 0.32],
+            proportion=0.60,
+            ring_width_range=[0.4, 0.8],
+            ring_height_range=[0.27, 0.35],
             ring_thickness=0.5,
             platform_width=3.0,
         ),
         # "ring": terrain_gen.MeshFloatingRingTerrainCfg(
-        #     proportion=0.1,
+        #     proportion=0.20,
         #     ring_width_range=[0.2, 1.0],
-        #     ring_height_range=[0.30, 0.35],
+        #     ring_height_range=[0.30, 0.50],
         #     ring_thickness=0.5,
         #     platform_width=3.0,
         # ),
-        "positive_pyramids": terrain_gen.HfPyramidSlopedTerrainCfg(
-            proportion=0.30,
-            slope_range=[0.175, 0.35], # -> [10,25] degrees
-            platform_width=1.0,
-            inverted=False,
-        ),
-        "negative_pyramids": terrain_gen.HfPyramidSlopedTerrainCfg(
-            proportion=0.30,
-            slope_range=[0.175, 0.35], # -> [10,20] degrees
-            platform_width=1.0,
-            inverted=True,
-        ),
+        # "positive_pyramids": terrain_gen.HfPyramidSlopedTerrainCfg(
+        #     proportion=0.30,
+        #     slope_range=[0.175, 0.35], # -> [10,25] degrees
+        #     platform_width=1.0,
+        #     inverted=False,
+        # ),
+        # "negative_pyramids": terrain_gen.HfPyramidSlopedTerrainCfg(
+        #     proportion=0.30,
+        #     slope_range=[0.175, 0.35], # -> [10,20] degrees
+        #     platform_width=1.0,
+        #     inverted=True,
+        # ),
         # "waves": terrain_gen.HfWaveTerrainCfg(
         #     proportion=0.1,
         #     amplitude_range=[0.05, 0.2],

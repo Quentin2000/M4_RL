@@ -52,13 +52,22 @@ class CommandsCfg:
 
     # The pos_x and pos_y commands are relative to the robot and should tend to 0. 
     # The pos_z command is directly in world frame, not an offset from current position and will stay at this height
+    
     pose_command = mdp.UniformPose3dCommandCfg(
         asset_name="robot",
         simple_heading=False,
         resampling_time_range=(25.0, 25.0),
         debug_vis=True,
-        ranges=mdp.UniformPose3dCommandCfg.Ranges(pos_x=(5.0, 5.5), pos_y=(0.0, 0.0), pos_z=(0.25, 0.32), heading=(-math.pi, math.pi))
+        ranges=mdp.UniformPose3dCommandCfg.Ranges(pos_x=(-3.0, 3.0), pos_y=(-3.0, 3.0), pos_z=(0.25, 0.32), heading=(-math.pi, math.pi))
     )
+
+    # pose_command = mdp.UniformPose2dCommandCfg(
+    #     asset_name="robot",
+    #     simple_heading=False,
+    #     resampling_time_range=(8.0, 8.0),
+    #     debug_vis=True,
+    #     ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-1.0, 1.0), pos_y=(-1.0, 1.0), heading=(-math.pi, math.pi)),
+    # )
     
     # z_command = mdp.UniformPoseCommandCfg(
     #     asset_name="robot",
@@ -102,6 +111,7 @@ class ObservationsCfg:
 
         def __post_init__(self):
             self.enable_corruption = True
+            # self.concatenate_terms = True
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()

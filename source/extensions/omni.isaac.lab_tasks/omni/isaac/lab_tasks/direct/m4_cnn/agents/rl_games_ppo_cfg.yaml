@@ -25,40 +25,40 @@ params:
           name: const_initializer
           val: 0
         fixed_sigma: True
-    cnn:
-      type: conv2d
-      activation: relu
-      initializer:
-          name: default
-      regularizer:
-        name: None
-      convs:
-        - filters: 32
-          kernel_size: 3
-          strides: 1
-          padding: 1
-        - filters: 64
-          kernel_size: 3
-          strides: 2
-          padding: 1
-        - filters: 128
-          kernel_size: 3
-          strides: 2
-          padding: 1
-        - filters: 256
-          kernel_size: 3
-          strides: 2
-          padding: 1
-        - filters: 512
-          kernel_size: 3
-          strides: 2
-          padding: 1
-        - filters: 512
-          kernel_size: 5
-          strides: 1
-          padding: 0
+    # cnn:
+    #   type: conv2d
+    #   activation: relu
+    #   initializer:
+    #       name: default
+    #   regularizer:
+    #     name: None
+    #   convs:
+    #     - filters: 32
+    #       kernel_size: 3
+    #       strides: 1
+    #       padding: 1
+    #     - filters: 64
+    #       kernel_size: 3
+    #       strides: 2
+    #       padding: 1
+    #     - filters: 128
+    #       kernel_size: 3
+    #       strides: 2
+    #       padding: 1
+    #     - filters: 256
+    #       kernel_size: 3
+    #       strides: 2
+    #       padding: 1
+    #     - filters: 512
+    #       kernel_size: 3
+    #       strides: 2
+    #       padding: 1
+    #     - filters: 512
+    #       kernel_size: 5
+    #       strides: 1
+    #       padding: 0
     mlp:
-      units: [128]
+      units: [32]
       activation: elu
       # d2rl: False
 
@@ -71,7 +71,7 @@ params:
   load_path: '' # path to the checkpoint to load
 
   config:
-    name: m4_elevation_cnn
+    name: m4_cnn
     env_name: rlgpu
     device: 'cuda:0'
     device_name: 'cuda:0'
@@ -98,10 +98,10 @@ params:
     entropy_coef: 0.005 # 0.0
     truncate_grads: True
     e_clip: 0.2
-    horizon_length: 200
-    minibatch_size: 4
-    mini_epochs: 4
-    critic_coef: 2
+    horizon_length: 400
+    minibatch_size: 8
+    mini_epochs: 8
+    critic_coef: 1.5
     clip_value: True
     seq_length: 40 # 4
     bounds_loss_coef: 0.0001
